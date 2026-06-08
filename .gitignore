@@ -1,0 +1,7 @@
+node_modules/
+dist/
+tsc
+.env
+.env.local
+.env.*.local
+test/
