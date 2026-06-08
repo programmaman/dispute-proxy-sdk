@@ -6,10 +6,6 @@ export enum DisputeState {
     RULED = 1,
 }
 
-export function disputeStateFromOrdinal(ordinal: number): DisputeState {
-    if (ordinal < 0 || ordinal > 1) throw new Error(`Unknown DisputeState ordinal: ${ordinal}`);
-    return ordinal as DisputeState;
-}
 
 export enum DisputeType {
     STANDARD = 0,

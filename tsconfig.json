@@ -14,6 +14,6 @@
       "ethers": ["./node_modules/ethers/lib.esm/index.d.ts"]
     }
   },
-  "include": ["src/**/*", "test/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["dist", "node_modules"]
 }

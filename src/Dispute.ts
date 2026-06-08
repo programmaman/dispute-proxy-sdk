@@ -1,10 +1,9 @@
 import type { AbstractProvider } from 'ethers';
-import type { PreparedTx } from './common/PreparedTx.js';
+import type { PreparedTx } from './common/index.js';
 import type {
     DisputeInfo,
     EnrichedEvidenceEvent,
     DisputeEvent,
-    DisputeEvidenceEvent,
 } from './types.js';
 import type { DisputesConfig } from './DisputeTxBuilder.js';
 import { DisputeReader } from './DisputeReader.js';

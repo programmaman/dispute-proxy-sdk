@@ -1,6 +1,6 @@
-import { Interface, ZeroAddress, getAddress } from 'ethers';
-import type { PreparedTx } from './common/PreparedTx.js';
-import { requireAddress, type SigningPreview, buildFeeBreakdown, formatUnixSec, ZERO_ADDRESS } from './common/index.js';
+import { Interface } from 'ethers';
+import type { PreparedTx } from './common/index.js';
+import { requireAddress, type SigningPreview, buildFeeBreakdown, ZERO_ADDRESS } from './common/index.js';
 import { DisputeFactory__factory, Dispute__factory } from '../generated/typechain/index.js';
 
 // ─── Configuration ─────────────────────────────────────────────────────────────

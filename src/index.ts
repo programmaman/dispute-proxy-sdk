@@ -21,7 +21,7 @@ export { DisputeReader } from './DisputeReader.js';
 export { DisputeEvents, DisputeTopics, TOPIC_DISPUTE_CREATED, TOPIC_CROWDFUNDABLE_DISPUTE_DEPLOYED, TOPIC_PROVIDER_DISPUTE_CREATED, TOPIC_RULING_ISSUED, TOPIC_EVIDENCE } from './DisputeEvents.js';
 
 // ─── Types & state ───────────────────────────────────────────
-export { DisputeState, disputeStateFromOrdinal, DisputeType } from './types.js';
+export { DisputeState, DisputeType } from './types.js';
 export type {
     FactoryInfo,
     DisputeInfo,

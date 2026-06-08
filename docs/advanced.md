@@ -82,13 +82,35 @@ List all registered dispute implementations:
 
 ```ts
 const dCount = await disputes.factory.disputeImplCount();
-for (let i = 0; i < dCount; i++) {
-  // No implAt reader yet. Read via raw call:
-  const raw = await provider.call({
-    to: factoryAddress,
-    data: iface.encodeFunctionData('disputeImplementationAt', [i]),
-  });
+const impls = await disputes.factory.listImplementations();
+for (const { address, name } of impls) {
+  console.log(`${name}: ${address}`);
 }
+```
+
+## Multicall (batching)
+
+Pass a `multicall` config to reduce RPC calls from 8 parallel to 1 batched call for `readFactory`
+and `readDispute`. Uses the Multicall3 contract at the configured address.
+
+```ts
+import { Disputes } from '@rakelabs/disputes-sdk';
+
+// Via fromProvider:
+const disputes = await Disputes.fromProvider(provider, walletAddress, {
+  address: '0xcA11bde05977b3631167028862bE2a173976CA11', // Multicall3 on mainnet
+});
+
+// Or via the config object:
+const disputes = new Disputes({
+  chainId: 1,
+  factoryAddress: '0xd61221AD7331d0233c50925BbFeF0ef1C891D647',
+  provider,
+  multicall: {
+    address: '0xcA11bde05977b3631167028862bE2a173976CA11',
+  },
+});
+// All subsequent readFactory / readDispute calls will use a single multicall batch.
 ```
 
 ## Event log filtering

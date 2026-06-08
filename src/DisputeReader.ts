@@ -6,7 +6,6 @@ import {
     type CostEstimate,
     type DisputeImplementationInfo,
     DisputeState,
-    disputeStateFromOrdinal,
 } from './types.js';
 import { type MulticallConfig, type EncodedReadCall, executeMulticall } from './multicall.js';
 import { DisputeFactory__factory, Dispute__factory } from '../generated/typechain/index.js';
@@ -25,16 +24,20 @@ export class DisputeReader {
 
     async readFactory(factoryAddress: string): Promise<FactoryInfo> {
         const addr = requireAddress(factoryAddress, 'factoryAddress');
+        return this._multicall
+            ? this._readFactoryViaMulticall(addr)
+            : this._readFactoryDirect(addr);
+    }
+
+    private async _readFactoryDirect(addr: string): Promise<FactoryInfo> {
         const call = (method: string) =>
             this.provider.call({ to: addr, data: FACTORY_IFACE.encodeFunctionData(method, []) });
 
         const [creationFeeRaw, arbitrator, feeRecipient, defaultsProvider,
-               owner, pendingOwnerRaw, defaultImplRaw, defaultCdImplRaw,
-               implCountRaw, cdImplCountRaw] = await Promise.all([
+               owner, pendingOwnerRaw, defaultImplRaw, defaultCdImplRaw] = await Promise.all([
             call('creationFee'), call('arbitrator'), call('feeRecipient'),
             call('defaultsProvider'), call('owner'), call('pendingOwner'),
             call('defaultDisputeImplementation'), call('defaultCrowdfundableDisputeImplementation'),
-            call('disputeImplementationCount'), call('crowdfundableDisputeImplementationCount'),
         ]);
 
         const [defaultImpl, defaultImplName] = FACTORY_IFACE.decodeFunctionResult('defaultDisputeImplementation', defaultImplRaw);
@@ -53,6 +56,70 @@ export class DisputeReader {
             defaultsProvider: FACTORY_IFACE.decodeFunctionResult('defaultsProvider', defaultsProvider)[0] as string,
             owner: FACTORY_IFACE.decodeFunctionResult('owner', owner)[0] as string,
             pendingOwner: pendingOwner && pendingOwner !== ZeroAddress ? pendingOwner : '',
+        };
+    }
+
+    private async _readFactoryViaMulticall(addr: string): Promise<FactoryInfo> {
+        const cfg   = this._multicall!;
+        const iface: Interface = FACTORY_IFACE;
+
+        const enc = (method: string, decoder?: (data: string) => unknown): EncodedReadCall => ({
+            target:   addr,
+            method,
+            callData: iface.encodeFunctionData(method, []),
+            decode:   decoder ?? ((data: string) => iface.decodeFunctionResult(method, data)[0] as unknown),
+        });
+
+        const calls: EncodedReadCall[] = [
+            enc('creationFee'),
+            enc('arbitrator'),
+            enc('feeRecipient'),
+            enc('defaultsProvider'),
+            enc('owner'),
+            enc('pendingOwner'),
+            {
+                target:   addr,
+                method:   'defaultDisputeImplementation',
+                callData: iface.encodeFunctionData('defaultDisputeImplementation', []),
+                decode:   (data: string) => {
+                    const r = iface.decodeFunctionResult('defaultDisputeImplementation', data);
+                    return { impl: r[0] as string, name: r[1] as string };
+                },
+            },
+            {
+                target:   addr,
+                method:   'defaultCrowdfundableDisputeImplementation',
+                callData: iface.encodeFunctionData('defaultCrowdfundableDisputeImplementation', []),
+                decode:   (data: string) => {
+                    const r = iface.decodeFunctionResult('defaultCrowdfundableDisputeImplementation', data);
+                    return { impl: r[0] as string, name: r[1] as string };
+                },
+            },
+        ];
+
+        const results = await executeMulticall(
+            this.provider, cfg.address, calls, cfg.requireSuccess !== false,
+        );
+
+        const [creationFee, arbitrator, feeRecipient, defaultsProvider,
+               owner, pendingOwnerRaw, defaultImpl, defaultCdImpl] = results;
+
+        const di  = defaultImpl  as { impl: string; name: string };
+        const cdi = defaultCdImpl as { impl: string; name: string };
+        const pendingOwner = pendingOwnerRaw as string;
+
+        return {
+            factoryAddress:                          addr,
+            defaultDisputeImpl:                      di.impl,
+            defaultDisputeImplName:                  di.name,
+            defaultCrowdfundableDisputeImpl:         cdi.impl,
+            defaultCrowdfundableDisputeImplName:     cdi.name,
+            creationFee:                             creationFee as bigint,
+            arbitrator:                              arbitrator as string,
+            feeRecipient:                            feeRecipient as string,
+            defaultsProvider:                        defaultsProvider as string,
+            owner:                                   owner as string,
+            pendingOwner:                            pendingOwner && pendingOwner !== ZeroAddress ? pendingOwner : '',
         };
     }
 
@@ -143,6 +210,12 @@ export class DisputeReader {
 
     async readDispute(disputeAddress: string): Promise<DisputeInfo> {
         const addr = requireAddress(disputeAddress, 'disputeAddress');
+        return this._multicall
+            ? this._readDisputeViaMulticall(addr)
+            : this._readDisputeDirect(addr);
+    }
+
+    private async _readDisputeDirect(addr: string): Promise<DisputeInfo> {
         const call = (method: string) =>
             this.provider.call({ to: addr, data: DISPUTE_IFACE.encodeFunctionData(method, []) });
 
@@ -167,6 +240,55 @@ export class DisputeReader {
             ruling: BigInt(DISPUTE_IFACE.decodeFunctionResult('ruling', rulingRaw)[0] as bigint),
             isRuled,
             evidenceSubmitted: DISPUTE_IFACE.decodeFunctionResult('evidenceSubmitted', evidenceSubmittedRaw)[0] as boolean,
+        };
+    }
+
+    private async _readDisputeViaMulticall(addr: string): Promise<DisputeInfo> {
+        const cfg   = this._multicall!;
+        const iface: Interface = DISPUTE_IFACE;
+
+        const enc = (method: string): EncodedReadCall => ({
+            target:   addr,
+            method,
+            callData: iface.encodeFunctionData(method, []),
+            decode:   (data: string) => iface.decodeFunctionResult(method, data)[0] as unknown,
+        });
+
+        const calls: EncodedReadCall[] = [
+            enc('owner'),
+            enc('arbitrator'),
+            enc('arbitratorExtraData'),
+            enc('providerDisputeId'),
+            enc('numberOfRulingOptions'),
+            enc('ruling'),
+            enc('isRuled'),
+            enc('evidenceSubmitted'),
+        ];
+
+        const results = await executeMulticall(
+            this.provider, cfg.address, calls, cfg.requireSuccess !== false,
+        );
+
+        const [owner, arbitrator, arbitratorExtraData, providerDisputeIdRaw,
+               numberOfRulingOptionsRaw, rulingRaw, isRuledRaw, evidenceSubmittedRaw] = results;
+
+        const providerDisputeId       = BigInt(providerDisputeIdRaw as bigint);
+        const numberOfRulingOptions   = BigInt(numberOfRulingOptionsRaw as bigint);
+        const ruling                  = BigInt(rulingRaw as bigint);
+        const isRuled                 = isRuledRaw as boolean;
+        const evidenceSubmitted       = evidenceSubmittedRaw as boolean;
+
+        return {
+            disputeAddress: addr,
+            state:            isRuled ? DisputeState.RULED : DisputeState.PENDING,
+            owner:            owner as string,
+            arbitrator:       arbitrator as string,
+            arbitratorExtraData: arbitratorExtraData as string,
+            providerDisputeId,
+            numberOfRulingOptions,
+            ruling,
+            isRuled,
+            evidenceSubmitted,
         };
     }
 

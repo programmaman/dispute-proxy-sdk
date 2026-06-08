@@ -1,12 +1,11 @@
 import type { AbstractProvider } from 'ethers';
-import type { PreparedTx } from './common/PreparedTx.js';
+import type { PreparedTx } from './common/index.js';
 import type {
     FactoryInfo,
     CostEstimate,
     DisputeImplementationInfo,
     DisputeCreatedEvent,
     CrowdfundableDisputeDeployedEvent,
-    CreateDisputeParams,
     PrepareCreateResult,
 } from './types.js';
 import type { DisputesConfig, CreateDisputeParams as TxParams, CreateCrowdfundableDisputeParams } from './DisputeTxBuilder.js';
@@ -318,6 +317,7 @@ export class Disputes {
     static async fromProvider(
         provider: AbstractProvider,
         walletAddress?: string,
+        multicall?: MulticallConfig,
     ): Promise<Disputes> {
         const { chainId } = await provider.getNetwork();
         const factoryAddress = getFactoryAddress(Number(chainId));
@@ -328,7 +328,7 @@ export class Disputes {
                 `Known chains: ${known}.`,
             );
         }
-        return new Disputes({ chainId: Number(chainId), factoryAddress, provider, walletAddress });
+        return new Disputes({ chainId: Number(chainId), factoryAddress, provider, walletAddress, multicall });
     }
 
     dispute(address: string): Dispute {
