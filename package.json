@@ -5,6 +5,14 @@
   "description": "npm SDK for dispute and Kleros-facing workflows",
   "license": "MIT",
   "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/programmaman/dispute-proxy-sdk.git"
+  },
+  "homepage": "https://github.com/programmaman/dispute-proxy-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/programmaman/dispute-proxy-sdk/issues"
+  },
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
