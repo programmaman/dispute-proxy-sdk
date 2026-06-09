@@ -116,6 +116,8 @@ const { tx } = await disputes.factory.prepareCreateDispute({
   metaEvidenceUri: 'ipfs://QmYourMetaEvidence',
   numberOfRulingOptions: 3n
 });
+
+console.log('Create dispute preview:', tx.preview);
 ```
 
 Send it with the user's wallet:
@@ -188,16 +190,20 @@ for (const item of timeline) {
 
 ## Prepared Transactions
 
-All state-changing SDK methods return a `PreparedTx`.
-
-Examples:
+All state-changing SDK methods return a `PreparedTx`. Each one includes a `preview` field with a human-readable summary -- show it to users before they sign so they know exactly what they are approving.
 
 ```ts
-prepareCreateDispute(...)
-submitEvidence(...)
-appeal(...)
-amendMetaEvidence(...)
+const { tx } = await disputes.factory.prepareCreateDispute(params);
+console.log(tx.preview);
+// {
+//   action: 'Create Dispute',
+//   description: 'Deploy a new dispute contract...',
+//   fees: { totalFeeWei: '16200000000000000', items: [...] },
+//   details: { 'Dispute ID': '0x...', 'Ruling options': '3' },
+// }
 ```
+
+Examples: prepareCreateDispute(...), submitEvidence(...), appeal(...), amendMetaEvidence(...)
 
 The SDK only builds transaction requests.
 
@@ -314,8 +320,4 @@ Full reference: [docs/error-decoder.md](docs/error-decoder.md).
 
 ## Smart Contract Disclosure
 
-These contracts are immutable after deployment.
-
-The SDK author has no administrative control over deployed disputes.
-
-Users interact with the contracts at their own risk.
+**This software deploys autonomous, immutable contracts. The author has zero administrative control or upgrade authority over your deployed contracts. Every transaction includes a human-readable preview -- check it before signing to verify exactly what you are approving. Please be careful when transacting with others. Users interact with this software entirely at their own risk.**
