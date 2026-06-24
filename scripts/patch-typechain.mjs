@@ -9,6 +9,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { readdirSync, statSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
+import { stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const __dir     = dirname(fileURLToPath(import.meta.url));
@@ -38,10 +39,10 @@ function patch(file, fileDir) {
     );
     if (patched !== original) {
         writeFileSync(file, patched, 'utf8');
-        console.log(`  patched ${file.replace(typesDir, '')}`);
+        stdout.write(`patched ${file.replace(typesDir, '')}\n`);
     }
 }
 
-console.log(`Patching TypeChain output in ${typesDir} ...`);
+stdout.write(`Patching TypeChain output in ${typesDir} ...\n`);
 walk(typesDir);
-console.log('Done.');
+stdout.write('Done.\n');

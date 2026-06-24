@@ -34,10 +34,10 @@ export async function executeMulticall<T>(
     }));
 
     const rawResults: Array<{ success: boolean; returnData: string }> =
-        await (contract.aggregate3 as typeof contract.aggregate3)(batch);
+        await (contract.aggregate3)(batch);
 
     return rawResults.map((r, i) => {
-        const c = calls[i]!;
+        const c = calls[i];
         if (!r.success && requireSuccess) {
             throw new Error(
                 `Multicall3 call failed — method="${c.method}" target=${c.target}`,

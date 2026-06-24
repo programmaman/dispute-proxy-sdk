@@ -37,7 +37,7 @@ export class DisputeEvents {
 
     tryDecodeDisputeCreated(log: EvmLog): DisputeCreatedEvent | undefined {
         if (!matchesTopic(log, TOPIC_DISPUTE_CREATED)) return undefined;
-        const parsed = factoryIface.parseLog({ topics: log.topics as string[], data: log.data })!;
+        const parsed = factoryIface.parseLog({ topics: log.topics, data: log.data })!;
         return {
             disputeId:       parsed.args.id       as string,
             instance:        parsed.args.instance as string,
@@ -49,7 +49,7 @@ export class DisputeEvents {
 
     tryDecodeCrowdfundableDisputeDeployed(log: EvmLog): CrowdfundableDisputeDeployedEvent | undefined {
         if (!matchesTopic(log, TOPIC_CROWDFUNDABLE_DISPUTE_DEPLOYED)) return undefined;
-        const parsed = factoryIface.parseLog({ topics: log.topics as string[], data: log.data })!;
+        const parsed = factoryIface.parseLog({ topics: log.topics, data: log.data })!;
         return {
             disputeId:       parsed.args.id       as string,
             instance:        parsed.args.instance as string,
@@ -63,7 +63,7 @@ export class DisputeEvents {
 
     tryDecodeProviderDisputeCreated(log: EvmLog): ProviderDisputeCreatedEvent | undefined {
         if (!matchesTopic(log, TOPIC_PROVIDER_DISPUTE_CREATED)) return undefined;
-        const parsed = disputeIface.parseLog({ topics: log.topics as string[], data: log.data })!;
+        const parsed = disputeIface.parseLog({ topics: log.topics, data: log.data })!;
         return {
             owner:           parsed.args.owner            as string,
             providerDisputeId: parsed.args.providerDisputeId as bigint,
@@ -74,7 +74,7 @@ export class DisputeEvents {
 
     tryDecodeRulingIssued(log: EvmLog): RulingIssuedEvent | undefined {
         if (!matchesTopic(log, TOPIC_RULING_ISSUED)) return undefined;
-        const parsed = disputeIface.parseLog({ topics: log.topics as string[], data: log.data })!;
+        const parsed = disputeIface.parseLog({ topics: log.topics, data: log.data })!;
         return {
             providerDisputeId: parsed.args.providerDisputeId as bigint,
             ruling:            parsed.args.ruling            as bigint,
@@ -85,7 +85,7 @@ export class DisputeEvents {
 
     tryDecodeEvidence(log: EvmLog): DisputeEvidenceEvent | undefined {
         if (!matchesTopic(log, TOPIC_EVIDENCE)) return undefined;
-        const parsed = disputeIface.parseLog({ topics: log.topics as string[], data: log.data })!;
+        const parsed = disputeIface.parseLog({ topics: log.topics, data: log.data })!;
         return {
             arbitrator:       parsed.args._arbitrator      as string,
             evidenceGroupId:  parsed.args._evidenceGroupID as bigint,

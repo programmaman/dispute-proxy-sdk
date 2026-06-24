@@ -27,7 +27,7 @@ export interface CreateDisputeParams {
     impl?: string;
 }
 
-export interface CreateCrowdfundableDisputeParams extends CreateDisputeParams {}
+export type CreateCrowdfundableDisputeParams = CreateDisputeParams;
 
 export interface DisputeActionParams {
     callerWallet: string;
@@ -90,8 +90,8 @@ export class DisputeTxBuilder {
     private readonly disputeIface: Interface;
 
     constructor() {
-        this.factoryIface = DisputeFactory__factory.createInterface() as unknown as Interface;
-        this.disputeIface = Dispute__factory.createInterface() as unknown as Interface;
+        this.factoryIface = DisputeFactory__factory.createInterface();
+        this.disputeIface = Dispute__factory.createInterface();
     }
 
     // ─── Factory: createDispute ─────────────────────────────────────────────
