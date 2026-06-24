@@ -1,6 +1,6 @@
 # @rakelabs/disputes-sdk
 
-Build Kleros arbitration into your application.
+Build [Kleros arbitration](https://kleros.io/) into your application.
 
 ## What is this?
 
