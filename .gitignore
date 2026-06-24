@@ -8,3 +8,4 @@ tsc
 test/
 tsconfig.test.json
 package.local.json
+/todo.md
