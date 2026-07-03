@@ -15,11 +15,12 @@ import { DisputeEvents, TOPIC_DISPUTE_CREATED, TOPIC_CROWDFUNDABLE_DISPUTE_DEPLO
 import { Dispute } from './Dispute.js';
 import { requireAddress, IdGenerator } from './common/index.js';
 import type { MulticallConfig } from './multicall.js';
-import { getFactoryAddress, listDeployments } from './deployments.js';
+import { FACTORY_ADDRESS, getFactoryAddress } from './deployments.js';
 
 export interface DisputeSdkConfig {
     chainId: number;
-    factoryAddress: string;
+    /** Defaults to the replayed DisputeFactory address. */
+    factoryAddress?: string;
     provider: AbstractProvider;
     walletAddress?: string;
     multicall?: MulticallConfig;
@@ -282,8 +283,10 @@ export class Disputes {
     private readonly _impl?:    string;
 
     constructor(config: DisputeSdkConfig) {
-        requireAddress(config.factoryAddress, 'factoryAddress');
-        this._cfg      = { chainId: config.chainId, factoryAddress: config.factoryAddress };
+        const chainId = Disputes._normalizeChainId(config.chainId);
+        const factoryAddress = config.factoryAddress ?? getFactoryAddress(chainId) ?? FACTORY_ADDRESS;
+        requireAddress(factoryAddress, 'factoryAddress');
+        this._cfg      = { chainId, factoryAddress };
         this._provider = config.provider;
         this._reader   = new DisputeReader(config.provider, config.multicall);
         this._builder  = new DisputeTxBuilder();
@@ -303,15 +306,7 @@ export class Disputes {
         walletAddress?: string,
         impl?: { address: string; name: string },
     ): Disputes {
-        const factoryAddress = getFactoryAddress(chainId);
-        if (!factoryAddress) {
-            const known = listDeployments().map(d => d.chainId).join(', ');
-            throw new Error(
-                `No default Disputes deployment known for chain ID ${chainId}. ` +
-                `Known chains: ${known}.`,
-            );
-        }
-        return new Disputes({ chainId: Number(chainId), factoryAddress, provider, walletAddress, impl });
+        return new Disputes({ chainId, provider, walletAddress, impl });
     }
 
     static async fromProvider(
@@ -320,15 +315,15 @@ export class Disputes {
         multicall?: MulticallConfig,
     ): Promise<Disputes> {
         const { chainId } = await provider.getNetwork();
-        const factoryAddress = getFactoryAddress(Number(chainId));
-        if (!factoryAddress) {
-            const known = listDeployments().map(d => d.chainId).join(', ');
-            throw new Error(
-                `No default Disputes deployment known for chain ID ${chainId}. ` +
-                `Known chains: ${known}.`,
-            );
+        const chainIdNumber = Disputes._normalizeChainId(Number(chainId));
+        return new Disputes({ chainId: chainIdNumber, provider, walletAddress, multicall });
+    }
+
+    private static _normalizeChainId(chainId: number): number {
+        if (!Number.isSafeInteger(chainId) || chainId <= 0) {
+            throw new Error(`Invalid Disputes chain ID: ${chainId}.`);
         }
-        return new Disputes({ chainId: Number(chainId), factoryAddress, provider, walletAddress, multicall });
+        return chainId;
     }
 
     dispute(address: string): Dispute {

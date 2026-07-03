@@ -1,183 +1,243 @@
-# Reference
+# API Reference
 
-Cheat sheet for every action, type, and common mistake.
+Compact reference for the public Disputes npm surface.
 
-## States
+## Main Exports
 
 ```ts
-enum DisputeState { PENDING, RULED }
-enum DisputeType { STANDARD, CROWDFUNDABLE }
+import {
+  Disputes,
+  Dispute,
+  DisputeTxBuilder,
+  DisputeReader,
+  DisputeEvents,
+  DisputeTopics,
+  DisputeState,
+  DisputeType,
+  buildArbitratorExtraData,
+  parseArbitratorExtraData,
+  extraData,
+  MainnetCourts,
+  decodeDisputeError,
+  IdGenerator,
+} from '@rakelabs/disputes-sdk';
 ```
 
-## Arbitrator extraData
+## State Enums
 
 ```ts
-import { buildArbitratorExtraData, parseArbitratorExtraData, MainnetCourts } from '@rakelabs/disputes-sdk';
-```
+enum DisputeState {
+  PENDING = 0,
+  RULED = 1,
+}
 
-| Function | Returns | Description |
-|----------|---------|-------------|
-| `buildArbitratorExtraData(courtId, minJurors)` | `string` (0x hex) | Encode Kleros Liquid court routing. |
-| `parseArbitratorExtraData(hex)` | `{ subcourtId: bigint, minJurors: bigint }` | Decode back. |
-
-Use `MainnetCourts` for self-documenting court IDs:
-
-```ts
-buildArbitratorExtraData(MainnetCourts.HumanityCourt, 3);
-// instead of
-buildArbitratorExtraData(23, 3);
-```
-
-
-
-## Factory actions
-
-| Method | Description | Who signs |
-|--------|-------------|:---------:|
-| `factory.readConfig()` | Read factory config (arbitrator, fee, impls, etc.). | N/A (read) |
-| `factory.estimateCost(extraData)` | Quote creation fee + arbitration cost. | N/A (read) |
-| `factory.creationFee()` | Read the factory's flat creation fee. | N/A (read) |
-| `factory.disputeImplCount()` | Number of registered dispute implementations. | N/A (read) |
-| `factory.crowdfundableDisputeImplCount()` | Number of registered crowdfundable implementations. | N/A (read) |
-| `factory.listImplementations()` | All registered standard dispute implementations. | N/A (read) |
-| `factory.listCrowdfundableImplementations()` | All registered crowdfundable dispute implementations. | N/A (read) |
-| `factory.predictAddress(req, caller)` | Predict clone address before creating. | N/A (read) |
-| `factory.createDispute(params)` | Build create dispute tx (you supply fee amounts). | Creator |
-| `factory.prepareCreateDispute(params)` | Estimate cost + build create tx in one call. | Creator |
-| `factory.createCrowdfundableDispute(params)` | Build create crowdfundable dispute tx. | Creator |
-| `factory.prepareCreateCrowdfundableDispute(params)` | Estimate cost + build create crowdfundable tx. | Creator |
-| `factory.getLogs(from, to)` | Fetch DisputeCreated events from factory. | N/A (read) |
-| `factory.getCrowdfundableLogs(from, to)` | Fetch CrowdfundableDisputeDeployed events. | N/A (read) |
-| `factory.getLogsByOwner(owner, from, to)` | Fetch events by owner address (both types). | N/A (read) |
-
-### CreateDispute params
-
-```ts
-{
-  disputeId:             string;   // bytes32 hex (auto-generated if omitted in prepare*)
-  arbitratorExtraData:   string;   // 0x-prefixed hex from buildArbitratorExtraData()
-  metaEvidenceUri:       string;   // IPFS link or other URI
-  numberOfRulingOptions: bigint;   // e.g. 2n = binary (for/against), 3n = with abstain
-  creationFee:           bigint;   // factory creation fee (read from chain)
-  arbFee:                bigint;   // Kleros arbitration fee (read from chain)
+enum DisputeType {
+  STANDARD = 0,
+  CROWDFUNDABLE = 1,
 }
 ```
 
-### FactoryInfo fields
+## Arbitrator Extra Data
 
 ```ts
-{
-  factoryAddress:                     string;
-  defaultDisputeImpl:                 string;
-  defaultDisputeImplName:             string;
-  defaultCrowdfundableDisputeImpl:    string;
-  defaultCrowdfundableDisputeImplName: string;
-  arbitrator:         string;
-  creationFee:        bigint;
-  feeRecipient:       string;
-  defaultsProvider:   string;
-  owner:              string;
-  pendingOwner:       string;
-}
+const encoded = buildArbitratorExtraData(MainnetCourts.HumanityCourt, 3);
+const decoded = parseArbitratorExtraData(encoded);
 ```
 
-## SDK config
+| Helper | Purpose |
+| --- | --- |
+| `buildArbitratorExtraData(courtId, minJurors)` | Encode Kleros court routing. |
+| `parseArbitratorExtraData(hex)` | Decode court ID and juror count. |
+| `extraData.generalCourt()` | Convenience extraData for general court defaults. |
+| `extraData.humanityCourt(minJurors)` | Convenience extraData for Humanity Court. |
+| `MainnetCourts` | Named court IDs. |
+
+## Top-Level SDK
+
+| Method | Purpose |
+| --- | --- |
+| `Disputes.fromProvider(provider, walletAddress?, multicall?)` | Detect chain and default factory from provider. |
+| `Disputes.forChain(chainId, provider, walletAddress?, impl?)` | Use the canonical factory address for a specific chain ID. |
+| `new Disputes(config)` | Use explicit factory, chain, multicall, and implementation config. |
+| `disputes.dispute(address)` | Return a bound dispute handle. No network call. |
+
+## SDK Config
 
 ```ts
 interface DisputeSdkConfig {
-  chainId:         number;
-  factoryAddress:  string;
-  provider:        AbstractProvider;
-  walletAddress?:  string;
-  multicall?:      MulticallConfig;   // optional Multicall3 batching
-  impl?:           { address: string; name: string };
+  chainId: number;
+  factoryAddress: string;
+  provider: AbstractProvider;
+  walletAddress?: string;
+  multicall?: { address: string };
+  impl?: { address: string; name: string };
 }
 ```
 
-## Dispute reads
+## Factory Reads
 
 | Method | Returns |
-|--------|---------|
-| `dispute.read()` | `DisputeInfo`, all on-chain state |
-| `dispute.arbitrationCost()` | `bigint`, current Kleros arbitration fee in wei |
-| `dispute.appealCost()` | `bigint`, current appeal fee |
-| `dispute.appealPeriod()` | `{ start: bigint, end: bigint }`, appeal window |
-| `dispute.getLogs(fromBlock, toBlock)` | `DisputeEvent[]`, all clone events |
-| `dispute.getEvidenceTimeline(fromBlock, toBlock)` | `EnrichedEvidenceEvent[]`, evidence with block timestamps |
+| --- | --- |
+| `factory.readConfig()` | `FactoryInfo` |
+| `factory.creationFee()` | `bigint` |
+| `factory.estimateCost(arbitratorExtraData)` | `{ creationFee, arbitrationCost, total }` |
+| `factory.disputeImplCount()` | `number` |
+| `factory.crowdfundableDisputeImplCount()` | `number` |
+| `factory.listImplementations()` | Standard implementations |
+| `factory.listCrowdfundableImplementations()` | Crowdfundable implementations |
+| `factory.predictAddress(req, caller?)` | Predicted clone address |
+| `factory.getLogs(from?, to?)` | `DisputeCreatedEvent[]` |
+| `factory.getCrowdfundableLogs(from?, to?)` | `CrowdfundableDisputeDeployedEvent[]` |
+| `factory.getLogsByOwner(owner, from?, to?)` | Standard and crowdfundable creation events |
 
-### DisputeInfo fields
+## Factory Writes
+
+| Method | Description | Who signs |
+| --- | --- | --- |
+| `factory.prepareCreateDispute(params)` | Estimate fees and build standard dispute transaction. | Owner |
+| `factory.prepareCreateCrowdfundableDispute(params)` | Estimate fees and build crowdfundable dispute transaction. | Owner |
+| `factory.createDispute(params)` | Build standard dispute transaction when you already know fees. | Owner |
+| `factory.createCrowdfundableDispute(params)` | Build crowdfundable dispute transaction when you already know fees. | Owner |
+
+### Prepare Create Params
 
 ```ts
-{
-  disputeAddress:        string;
-  state:                 DisputeState;
-  owner:                 string;
-  arbitrator:            string;
-  arbitratorExtraData:   string;       // raw hex
-  providerDisputeId:     bigint;       // Kleros internal dispute ID
+interface PrepareCreateDisputeParams {
+  disputeId?: string;
+  arbitratorExtraData: string;
+  metaEvidenceUri: string;
   numberOfRulingOptions: bigint;
-  ruling:                bigint;
-  isRuled:               boolean;
-  evidenceSubmitted:     boolean;
 }
 ```
 
-## Dispute writes
+### Prepare Result
+
+```ts
+type PrepareCreateResult = {
+  tx: PreparedTx;
+  disputeId: string;
+  creationFee: bigint;
+  arbitrationCost: bigint;
+  totalValue: bigint;
+};
+```
+
+## Dispute Reads
+
+| Method | Returns |
+| --- | --- |
+| `dispute.read()` | `DisputeInfo` |
+| `dispute.arbitrationCost()` | Current Kleros arbitration fee |
+| `dispute.appealCost()` | Current appeal fee |
+| `dispute.appealPeriod()` | `{ start, end }` |
+| `dispute.getLogs(from?, to?)` | Decoded dispute clone events |
+| `dispute.getEvidenceTimeline(from?, to?)` | Evidence events with block timestamps |
+
+## Dispute Writes
 
 | Method | Description |
-|--------|-------------|
-| `dispute.submitEvidence(uri)` | Submit evidence to the arbitrator. |
-| `dispute.amendMetaEvidence(newUri)` | Update the meta-evidence URI. |
-| `dispute.appeal(extraData, feeWei)` | Appeal the current ruling. |
+| --- | --- |
+| `dispute.submitEvidence(uri)` | Submit evidence URI. |
+| `dispute.amendMetaEvidence(newUri)` | Owner-only meta-evidence update before evidence is submitted. |
+| `dispute.appeal(extraData, feeWei)` | Build appeal transaction with caller-supplied fee. |
 | `dispute.rescueEth()` | Rescue trapped ETH after ruling. |
 
-## Event topics
+## DisputeInfo
 
 ```ts
-import { DisputeTopics } from '@rakelabs/disputes-sdk';
-```
-| `TOPIC_EVIDENCE` | `Evidence(address,uint256,address,string)` (clone) |
-
-## Decoded event shapes
-
-```ts
-// Factory events
-type DisputeCreatedEvent = { disputeId, instance, owner, logAddress, transactionHash }
-type CrowdfundableDisputeDeployedEvent = { disputeId, instance, owner, logAddress, transactionHash }
-
-// Clone events
-type ProviderDisputeCreatedEvent = { owner, providerDisputeId, logAddress, transactionHash }
-type RulingIssuedEvent = { providerDisputeId, ruling, logAddress, transactionHash }
-type DisputeEvidenceEvent = { arbitrator, evidenceGroupId, party, evidenceUri, logAddress, transactionHash }
-
-// Enriched evidence
-type EnrichedEvidenceEvent = {
-  party, evidenceGroupId, arbitrator, evidenceUri,
-  submittedAt: Date, blockNumber: number, transactionHash?: string,
+interface DisputeInfo {
+  disputeAddress: string;
+  state: DisputeState;
+  owner: string;
+  arbitrator: string;
+  arbitratorExtraData: string;
+  providerDisputeId: bigint;
+  numberOfRulingOptions: bigint;
+  ruling: bigint;
+  isRuled: boolean;
+  evidenceSubmitted: boolean;
 }
 ```
 
-## PreparedTx shape
-
-Every write method returns a `PreparedTx`:
+## PreparedTx
 
 ```ts
-{
-  to:         string;   // contract address
-  data:       string;   // calldata (0x-prefixed)
-  value:      string;   // ETH in wei (decimal string)
-  chainId:    number;
-  signerHint?: string;  // human-readable action label
-  preview?:   SigningPreview;  // structured fee breakdown for wallet UI
+interface PreparedTx {
+  to: string;
+  data: string;
+  value: string;
+  chainId: number;
+  signerHint?: string;
+  preview?: SigningPreview;
 }
 ```
 
-## Common mistakes
+Send with ethers v6:
+
+```ts
+await signer.sendTransaction({
+  to: tx.to,
+  data: tx.data,
+  value: BigInt(tx.value),
+});
+```
+
+## Events
+
+Factory events:
+
+```ts
+type DisputeCreatedEvent = {
+  disputeId: string;
+  instance: string;
+  owner: string;
+  logAddress: string;
+  transactionHash?: string;
+};
+
+type CrowdfundableDisputeDeployedEvent = {
+  disputeId: string;
+  instance: string;
+  owner: string;
+  logAddress: string;
+  transactionHash?: string;
+};
+```
+
+Clone events:
+
+```ts
+type ProviderDisputeCreatedEvent = {
+  owner: string;
+  providerDisputeId: bigint;
+  logAddress: string;
+  transactionHash?: string;
+};
+
+type RulingIssuedEvent = {
+  providerDisputeId: bigint;
+  ruling: bigint;
+  logAddress: string;
+  transactionHash?: string;
+};
+
+type DisputeEvidenceEvent = {
+  party: string;
+  evidenceGroupId: bigint;
+  arbitrator: string;
+  evidenceUri: string;
+  logAddress: string;
+  transactionHash?: string;
+};
+```
+
+## Common Mistakes
 
 | Mistake | Fix |
-|---------|-----|
-| Forgot to pass `value` when sending the tx. | Include `value: BigInt(tx.value)` in the `sendTransaction` call. |
-| Used `predictAddress` without the `caller` arg. | Pass the deployer's address as `caller` so the salt matches. |
-| Tried `appealCost` or `appealPeriod` on a non-disputed dispute. | Check the dispute state first. |
-| Submitting the wrong `arbitratorExtraData`. | Use `buildArbitratorExtraData(courtId, minJurors)`. Never construct the hex manually. |
-| Assuming `submitEvidence` is owner-only. | Anyone can submit evidence. `amendMetaEvidence` is owner-only. |
+| --- | --- |
+| Passing `tx.value` directly to ethers v6. | Use `BigInt(tx.value)`. |
+| Treating `disputeId` as the contract address. | Store `instance` from the factory creation event. |
+| Building `arbitratorExtraData` manually. | Use `buildArbitratorExtraData()` or `extraData`. |
+| Assuming evidence submission is owner-only. | Anyone can submit evidence while the contract allows it. |
+| Amending meta-evidence after evidence exists. | Amend before evidence is submitted, or create a new dispute/policy version. |
+| Scanning from block `0` in production on every page load. | Persist indexed cursors or query bounded block ranges. |

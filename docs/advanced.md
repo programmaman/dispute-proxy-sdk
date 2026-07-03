@@ -1,203 +1,242 @@
-# Advanced
+# Advanced Guide
 
-Power-user features not covered in the happy path.
+This guide covers direct builders, readers, implementation pinning, multicall, event indexing, crowdfundable disputes, and wallet-library adapters.
 
-## Using the transaction builder directly
+## Choose the Right Layer
 
-The `DisputeTxBuilder` is the stateless core. It encodes calldata from typed parameters and returns a `PreparedTx`. Use it directly if you don't need the high-level `Disputes` facade.
+| Layer | Use when |
+| --- | --- |
+| `Disputes` facade | You want deployment lookup, prepare helpers, bound dispute handles, and fewer manual fee steps. |
+| `DisputeReader` | You only need chain reads. |
+| `DisputeTxBuilder` | You already have fees and IDs and only need calldata encoding. |
+| `DisputeEvents` | You are indexing raw logs yourself. |
+
+Most apps should use:
 
 ```ts
-import { DisputeTxBuilder, buildArbitratorExtraData } from '@rakelabs/disputes-sdk';
-
-const builder = new DisputeTxBuilder();
-
-const cfg = { chainId: 11155111, factoryAddress: '0x...' };
-
-// Create a standard dispute
-const tx = builder.createDispute(cfg, {
-  callerWallet:          '0xUSER...',
-  disputeId:             '0x' + '22'.repeat(32),
-  arbitratorExtraData:   buildArbitratorExtraData(0, 3),
-  metaEvidenceUri:       'ipfs://QmMeta',
-  numberOfRulingOptions: 3n,
-  creationFee:           0n,
-  arbFee:                3n,
-});
-
-// Submit evidence
-const evidenceTx = builder.submitEvidence(cfg, {
-  callerWallet:   '0xUSER...',
-  disputeAddress: '0xDISP...',
-  evidenceUri:    'ipfs://QmEvidence',
-});
-
-// Appeal
-const appealTx = builder.appeal(cfg, {
-  callerWallet:       '0xUSER...',
-  disputeAddress:     '0xDISP...',
-  arbitratorExtraData: '0x',
-  appealFeeWei:       100000000000000000n,
-});
+const disputes = await Disputes.fromProvider(provider, walletAddress);
+const { tx } = await disputes.factory.prepareCreateDispute(params);
+const dispute = disputes.dispute('0xDISPUTE_ADDRESS');
 ```
 
-### Builder methods
-
-| Method | Description |
-|--------|-------------|
-| `createDispute(cfg, params)` | Standard dispute create tx. |
-| `createCrowdfundableDispute(cfg, params)` | Crowdfundable dispute create tx. |
-| `submitEvidence(cfg, params)` | Submit evidence to arbitrator. |
-| `amendMetaEvidence(cfg, params)` | Correct meta-evidence URI (owner-only). |
-| `appeal(cfg, params)` | Appeal a ruling. |
-| `rescueEth(cfg, params)` | Rescue trapped ETH after ruling. |
-
-With pinned implementation:
+## Explicit Config
 
 ```ts
-const tx = builder.createDispute(cfg, {
-  ...params,
-  impl: '0xPINNED_IMPL_ADDRESS',
-});
-```
-
-## Using the reader directly
-
-`DisputeReader` performs raw `eth_call` reads. Use it when you don't want the `Disputes` facade.
-
-```ts
-import { DisputeReader } from '@rakelabs/disputes-sdk';
-import { JsonRpcProvider } from 'ethers';
-
-const reader = new DisputeReader(new JsonRpcProvider('...'));
-
-const config = await reader.readFactory('0xFACTORY...');
-const info   = await reader.readDispute('0xDISPUTE...');
-const cost   = await reader.estimateCost('0xFACTORY...', extraData);
-const addr   = await reader.predictDisputeAddress('0xFACTORY...', req, undefined, callerAddr);
-```
-
-## Factory enumeration
-
-List all registered dispute implementations:
-
-```ts
-const dCount = await disputes.factory.disputeImplCount();
-const impls = await disputes.factory.listImplementations();
-for (const { address, name } of impls) {
-  console.log(`${name}: ${address}`);
-}
-```
-
-## Multicall (batching)
-
-Pass a `multicall` config to reduce RPC calls from 8 parallel to 1 batched call for `readFactory`
-and `readDispute`. Uses the Multicall3 contract at the configured address.
-
-```ts
-import { Disputes } from '@rakelabs/disputes-sdk';
-
-// Via fromProvider:
-const disputes = await Disputes.fromProvider(provider, walletAddress, {
-  address: '0xcA11bde05977b3631167028862bE2a173976CA11', // Multicall3 on mainnet
-});
-
-// Or via the config object:
 const disputes = new Disputes({
-  chainId: 1,
-  factoryAddress: '0xd61221AD7331d0233c50925BbFeF0ef1C891D647',
+  chainId: 11155111,
+  factoryAddress: '0xFACTORY_ADDRESS',
   provider,
+  walletAddress,
   multicall: {
     address: '0xcA11bde05977b3631167028862bE2a173976CA11',
   },
 });
-// All subsequent readFactory / readDispute calls will use a single multicall batch.
 ```
 
-## Event log filtering
+Use explicit config for custom deployments, tests, backends, or when you need multicall and implementation pinning.
 
-Use `DisputeEvents` to decode raw EVM logs:
+## Crowdfundable Disputes
+
+Use the crowdfundable path when your dispute implementation supports crowd-funded appeals or related contribution flows.
 
 ```ts
-import { DisputeEvents, TOPIC_DISPUTE_CREATED } from '@rakelabs/disputes-sdk';
+const { tx, disputeId, totalValue } =
+  await disputes.factory.prepareCreateCrowdfundableDispute({
+    arbitratorExtraData,
+    metaEvidenceUri: 'ipfs://QmMetaEvidence',
+    numberOfRulingOptions: 2n,
+  });
+
+await signer.sendTransaction({
+  to: tx.to,
+  data: tx.data,
+  value: BigInt(tx.value),
+});
+```
+
+Factory logs for crowdfundable deployments are separate:
+
+```ts
+const logs = await disputes.factory.getCrowdfundableLogs(0, 'latest');
+```
+
+## Implementation Pinning
+
+Factories can register multiple standard and crowdfundable dispute implementations.
+
+```ts
+const standard = await disputes.factory.listImplementations();
+const crowdfundable = await disputes.factory.listCrowdfundableImplementations();
+```
+
+Pin a standard implementation in explicit config:
+
+```ts
+const pinned = new Disputes({
+  chainId: 11155111,
+  factoryAddress: '0xFACTORY_ADDRESS',
+  provider,
+  walletAddress,
+  impl: standard[0],
+});
+```
+
+Pinning affects create and predict calls. Existing dispute handles are bound to a deployed clone address and do not need implementation selection.
+
+## Multicall Reads
+
+Add Multicall3 to batch `readDispute()` and `readFactory()` internals.
+
+```ts
+const disputes = await Disputes.fromProvider(provider, walletAddress, {
+  address: '0xcA11bde05977b3631167028862bE2a173976CA11',
+});
+
+const info = await disputes.dispute('0xDISPUTE_ADDRESS').read();
+const config = await disputes.factory.readConfig();
+```
+
+Only configure multicall for chains where the address is deployed.
+
+## Direct Transaction Builder
+
+`DisputeTxBuilder` is stateless. It does not estimate fees, resolve deployments, or read chain state.
+
+```ts
+import {
+  DisputeTxBuilder,
+  IdGenerator,
+  buildArbitratorExtraData,
+} from '@rakelabs/disputes-sdk';
+
+const builder = new DisputeTxBuilder();
+const cfg = { chainId: 11155111, factoryAddress: '0xFACTORY_ADDRESS' };
+
+const tx = builder.createDispute(cfg, {
+  callerWallet: '0xOWNER_ADDRESS',
+  disputeId: IdGenerator.generateOnChainIdHex(),
+  arbitratorExtraData: buildArbitratorExtraData(0, 3),
+  metaEvidenceUri: 'ipfs://QmMetaEvidence',
+  numberOfRulingOptions: 2n,
+  creationFee: 0n,
+  arbFee: 1_000_000_000_000_000n,
+});
+```
+
+Builder methods:
+
+| Method | Description |
+| --- | --- |
+| `createDispute(cfg, params)` | Build standard dispute create transaction. |
+| `createCrowdfundableDispute(cfg, params)` | Build crowdfundable dispute create transaction. |
+| `submitEvidence(cfg, params)` | Build evidence submission transaction. |
+| `amendMetaEvidence(cfg, params)` | Build owner-only meta-evidence amendment transaction. |
+| `appeal(cfg, params)` | Build appeal transaction with supplied appeal fee. |
+| `rescueEth(cfg, params)` | Build rescue transaction for trapped ETH after ruling. |
+
+## Direct Reader
+
+```ts
+import { JsonRpcProvider } from 'ethers';
+import { DisputeReader } from '@rakelabs/disputes-sdk';
+
+const reader = new DisputeReader(new JsonRpcProvider(process.env.RPC_URL));
+
+const factory = await reader.readFactory('0xFACTORY_ADDRESS');
+const dispute = await reader.readDispute('0xDISPUTE_ADDRESS');
+const cost = await reader.estimateCost('0xFACTORY_ADDRESS', arbitratorExtraData);
+```
+
+Use direct readers for dashboards, monitoring jobs, backends, and services that should never prepare transactions.
+
+## Event Indexing
+
+For common app history:
+
+```ts
+const byOwner = await disputes.factory.getLogsByOwner(ownerAddress);
+const history = await disputes.dispute('0xDISPUTE_ADDRESS').getLogs();
+const evidence = await disputes.dispute('0xDISPUTE_ADDRESS')
+  .getEvidenceTimeline(0, 'latest');
+```
+
+For custom indexers:
+
+```ts
+import { DisputeEvents, DisputeTopics } from '@rakelabs/disputes-sdk';
 
 const events = new DisputeEvents();
-
 const rawLogs = await provider.getLogs({
-  address:   factoryAddress,
-  topics:    [TOPIC_DISPUTE_CREATED],
+  address: factoryAddress,
+  topics: [DisputeTopics.DISPUTE_CREATED],
   fromBlock: 0,
-  toBlock:   'latest',
+  toBlock: 'latest',
 });
 
 for (const log of rawLogs) {
   const decoded = events.tryDecodeDisputeCreated({
     address: log.address,
-    topics: log.topics as string[],
+    topics: log.topics,
     data: log.data,
     transactionHash: log.transactionHash,
   });
   if (decoded) {
-    console.log(`Dispute ${decoded.disputeId} → ${decoded.instance}`);
+    console.log(decoded.disputeId, decoded.instance);
   }
 }
 ```
 
-## Evidence timeline
+## Evidence Timeline
 
-The `getEvidenceTimeline` method enriches each evidence event with the block timestamp, making it easy to show submission times in a UI:
+`getEvidenceTimeline()` enriches evidence events with block timestamps.
 
 ```ts
 const timeline = await dispute.getEvidenceTimeline(0, 'latest');
 
-for (const ev of timeline) {
-  console.log(`${ev.submittedAt.toLocaleString()}`);
-  console.log(`  Party:  ${ev.party}`);
-  console.log(`  URI:    ${ev.evidenceUri}`);
-  console.log(`  Block:  ${ev.blockNumber}`);
+for (const event of timeline) {
+  console.log(event.submittedAt, event.party, event.evidenceUri);
 }
 ```
 
-## PreparedTx previews
+Use this for UI timelines and audit exports. For large historical scans, prefer a real indexer and paginate block ranges.
 
-Every transaction includes a `preview` field with a structured fee breakdown and human-readable labels. Use it for wallet confirmation screens:
+## Wallet Library Adapters
+
+ethers v6:
 
 ```ts
-const { tx } = await disputes.factory.prepareCreateDispute(params);
-
-console.log(tx.preview);
-// {
-//   action: 'Create Dispute',
-//   signer: 'owner',
-//   description: 'Deploy a new dispute contract and submit to Kleros arbitration.',
-//   valueWei: '3',
-//   fees: {
-//     token: '0x0000…0000',
-//     items: [
-//       { label: 'Creation fee', amountWei: '0' },
-//       { label: 'Arbitration fee', amountWei: '3' },
-//     ],
-//     totalFeeWei: '3',
-//   },
-//   details: {
-//     'Dispute ID': '0x…',
-//     'Ruling options': '3',
-//     'Meta evidence': 'ipfs://…',
-//   },
-// }
+await signer.sendTransaction({
+  to: tx.to,
+  data: tx.data,
+  value: BigInt(tx.value),
+});
 ```
 
-## ID generation
+wagmi / viem:
 
-Generate globally unique on-chain dispute IDs:
+```ts
+await sendTransaction(config, {
+  to: tx.to as `0x${string}`,
+  data: tx.data as `0x${string}`,
+  value: BigInt(tx.value),
+});
+```
+
+Account abstraction:
+
+```ts
+await smartAccount.sendUserOperation({
+  target: tx.to,
+  data: tx.data,
+  value: BigInt(tx.value),
+});
+```
+
+## ID Generation
 
 ```ts
 import { IdGenerator } from '@rakelabs/disputes-sdk';
 
-// Random bytes32:
-const id = IdGenerator.generateOnChainIdHex();
-// → '0x7f83…a4b1'
-
-// Human-friendly IDs for internal tracking:
-const friendly = IdGenerator.generateFriendlyId('DISP-', 12);
-// → 'DISP-8xK2mPq9RfTv'
+const onChainId = IdGenerator.generateOnChainIdHex();
+const displayId = IdGenerator.generateFriendlyId('DISP-', 12);
 ```

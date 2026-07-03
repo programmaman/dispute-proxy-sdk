@@ -1,154 +1,94 @@
 # @rakelabs/disputes-sdk
 
-Build Kleros arbitration into your application.
+Build Kleros-facing dispute workflows from a TypeScript app. The SDK prepares unsigned transactions for dispute creation, evidence submission, meta-evidence amendments, appeals, and event decoding; your user's wallet remains responsible for signing and broadcasting.
 
-## What is this?
-
-`@rakelabs/disputes-sdk` is a JavaScript / TypeScript library for creating disputes, submitting evidence, and reading rulings from the Kleros arbitration system.
-
-A dispute is a question that Kleros jurors will answer.
-
-Examples:
-
-* An escrow dispute between a buyer and seller.
-* A payment dispute.
-* A registry challenge.
-* A moderation appeal.
-* Any workflow that needs an independent ruling.
-
-The SDK creates transaction requests but never signs or sends them.
-
-Your application prepares the transaction, the user's wallet signs it, and the blockchain executes it.
+The SDK never holds private keys and never takes custody of funds.
 
 ```text
-Your App
-    ↓
-Disputes SDK
-    ↓
-Prepared Transaction
-    ↓
-User Wallet
-    ↓
-Blockchain
+Your app -> Disputes SDK -> unsigned transaction -> user wallet -> blockchain
 ```
 
-The SDK never stores private keys and never takes custody of user funds.
-
-## Installation
+## Install
 
 ```bash
 npm install @rakelabs/disputes-sdk ethers
 ```
 
-> Requires ethers v6.
+Requirements:
 
-## How disputes work
+- Node.js 20+
+- ethers v6
+- an EIP-1193 wallet provider, JSON-RPC provider, or compatible ethers provider
 
-Every dispute is deployed as its own smart contract.
+## What You Build With It
 
-A dispute contains:
+Use this package when your application needs a standalone Kleros dispute contract:
 
-* A question for jurors to answer.
-* A set of ruling options.
-* Evidence submitted by participants.
-* The final ruling from Kleros.
+- choose Kleros court parameters with `extraData`,
+- publish or reference a MetaEvidence URI,
+- create a dispute with a fixed number of ruling options,
+- submit evidence documents,
+- read dispute state, evidence timelines, rulings, and events,
+- prepare appeal transactions when the ruling can be appealed.
 
-### States
-
-The dispute moves from PENDING to RULED.
-
-## Evidence
-
-Evidence submission is open by default.
-
-Any address can submit evidence while a dispute is pending.
-
-Each evidence record stores:
-
-* The submitting address.
-* The evidence URI.
-* The submission time.
-
-If your application needs restricted evidence submission, you can request such an implementation and it will be added to the SDK.
+If your product is specifically escrow or payment oriented, start with `@rakelabs/klescrow-sdk` or `@rakelabs/dpayments-sdk`. Use this package when you need direct dispute primitives.
 
 ## Quick Start
 
 ```ts
-import { Disputes } from '@rakelabs/disputes-sdk';
 import { BrowserProvider } from 'ethers';
+import { Disputes, extraData } from '@rakelabs/disputes-sdk';
 
 const provider = new BrowserProvider(window.ethereum);
 await provider.send('eth_requestAccounts', []);
+
 const signer = await provider.getSigner();
 const walletAddress = await signer.getAddress();
 
-// One line. Chain and factory address are auto-detected.
 const disputes = await Disputes.fromProvider(provider, walletAddress);
-```
 
-## Creating a dispute
+const arbitratorExtraData = extraData.generalCourt();
+const estimate = await disputes.factory.estimateCost(arbitratorExtraData);
 
-First choose which Kleros court should hear the dispute.
+console.log('Total dispute cost:', estimate.total.toString());
 
-```ts
-import { extraData } from '@rakelabs/disputes-sdk';
-
-// Pick a court by name. This builds the encoded hex for you.
-const data = extraData.humanityCourt(3);   // Court 23, 3 jurors
-// const data = extraData.generalCourt();  // Court 0, default 3 jurors
-```
-
-Estimate the cost:
-
-```ts
-const cost = await disputes.factory.estimateCost(extraData);
-
-console.log(cost.total);
-```
-
-> **Building the meta-evidence document?** Consider using [`@rakelabs/evidence-publisher`](https://www.npmjs.com/package/@rakelabs/evidence-publisher). It handles ERC-1497 evidence construction, IPFS publication, and remote pinning. If you're using Kleros' own SDKs, they may also have tooling for this.
-
-Prepare the transaction:
-
-```ts
-const { tx } = await disputes.factory.prepareCreateDispute({
-  arbitratorExtraData: extraData,
-  metaEvidenceUri: 'ipfs://QmYourMetaEvidence',
-  numberOfRulingOptions: 3n
+const { tx, disputeId } = await disputes.factory.prepareCreateDispute({
+  arbitratorExtraData,
+  metaEvidenceUri: 'ipfs://QmYourMetaEvidenceDocument',
+  numberOfRulingOptions: 2n,
 });
 
-console.log('Create dispute preview:', tx.preview);
-```
+console.log(tx.preview);
 
-Send it with the user's wallet:
-
-```ts
 const response = await signer.sendTransaction({
   to: tx.to,
   data: tx.data,
-  value: BigInt(tx.value)
+  value: BigInt(tx.value),
 });
-
 await response.wait();
+
+const created = (await disputes.factory.getLogs(0, 'latest'))
+  .find((event) => event.disputeId === disputeId);
+
+if (!created) {
+  throw new Error('Dispute creation event was not found');
+}
+
+const dispute = disputes.dispute(created.instance);
 ```
 
-## Finding the dispute contract
+## MetaEvidence and Evidence
 
-The dispute contract address is the most important identifier.
+Kleros workflows usually have two document layers:
 
-Applications should store the dispute contract address and use it when reconnecting to existing disputes.
+- MetaEvidence describes the dispute category, question, policy, and ruling options.
+- Evidence describes the proof submitted for one specific dispute.
 
-You can:
+Use `@rakelabs/evidence-publisher` to build and publish both document types to IPFS, then pass the returned `ipfs://...` URIs into this SDK.
 
-* Predict the address before deployment.
-* Read it from the transaction receipt.
-* Read it from the `DisputeCreated` event.
+## Common Flows
 
-```ts
-const dispute = disputes.dispute(contractAddress);
-```
-
-## Reading dispute state
+### Read State
 
 ```ts
 const info = await dispute.read();
@@ -159,165 +99,101 @@ console.log(info.providerDisputeId);
 console.log(info.numberOfRulingOptions);
 ```
 
-## Submitting evidence
-
-> **Building the evidence document?** Consider using [`@rakelabs/evidence-publisher`](https://www.npmjs.com/package/@rakelabs/evidence-publisher). It handles ERC-1497 evidence construction, IPFS publication, and remote pinning. If you're using Kleros' own SDKs, they may also have tooling for this.
+### Submit Evidence
 
 ```ts
-const tx = dispute.submitEvidence(
-  'ipfs://QmYourEvidenceDocument'
-);
+const evidenceTx = dispute.submitEvidence('ipfs://QmYourEvidenceDocument');
+console.log(evidenceTx.preview);
 
-await signer.sendTransaction(tx);
+await signer.sendTransaction({
+  to: evidenceTx.to,
+  data: evidenceTx.data,
+  value: BigInt(evidenceTx.value),
+});
 ```
 
-## Reading evidence
+### Read Evidence Timeline
 
 ```ts
-const timeline = await dispute.getEvidenceTimeline(
-  0,
-  'latest'
-);
+const timeline = await dispute.getEvidenceTimeline(0, 'latest');
 
-for (const item of timeline) {
-  console.log(
-    item.submittedAt,
-    item.submitter,
-    item.evidenceUri
-  );
+for (const event of timeline) {
+  console.log(event.submittedAt, event.party, event.evidenceUri);
 }
 ```
 
-## Prepared Transactions
-
-All state-changing SDK methods return a `PreparedTx`. Each one includes a `preview` field with a human-readable summary -- show it to users before they sign so they know exactly what they are approving.
+### Appeal
 
 ```ts
-const { tx } = await disputes.factory.prepareCreateDispute(params);
-console.log(tx.preview);
-// {
-//   action: 'Create Dispute',
-//   description: 'Deploy a new dispute contract...',
-//   fees: { totalFeeWei: '16200000000000000', items: [...] },
-//   details: { 'Dispute ID': '0x...', 'Ruling options': '3' },
-// }
+const [appealFeeWei, appealPeriod] = await Promise.all([
+  dispute.appealCost(),
+  dispute.appealPeriod(),
+]);
+
+if (appealPeriod.end === 0n) {
+  throw new Error('No appeal window is currently open');
+}
+
+const appealTx = dispute.appeal('0x', appealFeeWei);
+await signer.sendTransaction({
+  to: appealTx.to,
+  data: appealTx.data,
+  value: BigInt(appealTx.value),
+});
 ```
-
-Examples: prepareCreateDispute(...), submitEvidence(...), appeal(...), amendMetaEvidence(...)
-
-The SDK only builds transaction requests.
-
-Your application is responsible for sending them using a wallet, signer, relayer, or account abstraction system.
-
-## Dispute IDs
-
-Dispute IDs are application-level identifiers.
-
-You can provide your own IDs:
-
-* UUIDs
-* Order IDs
-* Escrow IDs
-* Payment IDs
-* Internal database IDs
-
-The factory includes a UUID generator for convenience.
-
-The dispute contract address is still the canonical on-chain identifier and should be stored by your application.
 
 ## Arbitrator Extra Data
 
-Kleros uses `extraData` to decide:
-
-* Which court hears the dispute.
-* The minimum number of jurors.
+Kleros uses `extraData` to select the court and minimum juror count.
 
 ```ts
 import {
   buildArbitratorExtraData,
-  parseArbitratorExtraData
+  parseArbitratorExtraData,
+  extraData,
 } from '@rakelabs/disputes-sdk';
 
-const extraData =
-  buildArbitratorExtraData(0, 3);
+const encoded = buildArbitratorExtraData(0, 3);
+const generalCourt = extraData.generalCourt();
+const decoded = parseArbitratorExtraData(encoded);
 
-const decoded =
-  parseArbitratorExtraData(extraData);
-
-console.log(decoded.subcourtId);
-console.log(decoded.minJurors);
+console.log(generalCourt, decoded.subcourtId, decoded.minJurors);
 ```
 
-## Events
+## Errors
 
-The SDK includes helpers for decoding dispute events.
-
-```ts
-import {
-  DisputeEvents,
-  TOPIC_DISPUTE_CREATED
-} from '@rakelabs/disputes-sdk';
-
-const events = new DisputeEvents();
-
-const decoded =
-  events.tryDecodeDisputeCreated(rawLog);
-```
-
-## Using the Evidence SDK
-
-Evidence is usually stored as an ERC-1497 document.
-
-The companion package helps create and publish evidence documents.
-
-```ts
-import {
-  createEvidencePublisher
-} from '@rakelabs/evidence-sdk';
-
-const publisher =
-  await createEvidencePublisher({
-    /* config */
-  });
-
-const { uri } = await publisher.publish({
-  name: 'Evidence',
-  description: 'Screenshots and logs',
-  fileUris: []
-});
-
-await signer.sendTransaction(
-  dispute.submitEvidence(uri)
-);
-```
-
-## Decoding revert errors
-
-When a transaction reverts on-chain, `decodeDisputeError` turns the raw hex into a readable error name.
+Use `decodeDisputeError` to turn raw revert data into a readable contract error.
 
 ```ts
 import { decodeDisputeError } from '@rakelabs/disputes-sdk';
 
 try {
-  await signer.sendTransaction({ ...tx, value: BigInt(tx.value) });
+  await signer.sendTransaction({
+    to: tx.to,
+    data: tx.data,
+    value: BigInt(tx.value),
+  });
 } catch (err) {
   const decoded = decodeDisputeError(err);
   if (decoded && 'error' in decoded) {
-    showToast(`Transaction reverted: ${decoded.error}`);
+    console.error(decoded.error, decoded.args);
   }
 }
 ```
 
-Full reference: [docs/error-decoder.md](docs/error-decoder.md).
+## Documentation
 
-## Further Reading
+| Document | Use it for |
+| --- | --- |
+| [docs/reference.md](docs/reference.md) | API reference, types, actions, events, and common mistakes |
+| [docs/error-decoder.md](docs/error-decoder.md) | Revert decoding details |
+| [docs/advanced.md](docs/advanced.md) | Reader, transaction builder, multicall, and implementation selection |
+| [docs/on-chain.md](docs/on-chain.md) | Contract-level behavior and event model |
 
-| Document          | Description                           |
-| ----------------- | ------------------------------------- |
-| docs/reference.md | API reference and examples            |
-| docs/error-decoder.md | `decodeDisputeError` reference    |
-| docs/advanced.md  | Advanced usage and factory operations |
+## Safety Notes
 
-## Smart Contract Disclosure
-
-**This software deploys autonomous, immutable contracts. The author has zero administrative control over your balance or deployed contract. Every transaction includes a human-readable preview -- check it before signing to verify exactly what you are approving. Please be careful when transacting with others. Users interact with this software entirely at their own risk.**
+- Always show `tx.preview` before requesting a signature.
+- Store the dispute contract address after creation; it is the canonical on-chain handle.
+- Publish durable MetaEvidence and Evidence URIs before submitting them on-chain.
+- Check chain IDs, court parameters, ruling options, and contract addresses before sending transactions.
+- This software interacts with autonomous contracts. Users transact at their own risk.

@@ -52,4 +52,5 @@ export { decodeDisputeError } from './error-decoder.js';
 export type { DecodedRevert } from './error-decoder.js';
 
 // ─── Deployments ─────────────────────────────────────────────
-export { getFactoryAddress, listDeployments, MAINNET } from './deployments.js';
+export * as DisputeDeployments from './deployments.js';
+export { MAINNET, FACTORY_ADDRESS, DEFAULT_FACTORY_ADDRESS, getFactoryAddress, listDeployments } from './deployments.js';
