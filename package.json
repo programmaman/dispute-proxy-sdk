@@ -1,6 +1,6 @@
 {
   "name": "@rakelabs/disputes-sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "description": "npm SDK for dispute and Kleros-facing workflows",
   "license": "MIT",
