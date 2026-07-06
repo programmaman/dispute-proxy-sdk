@@ -53,4 +53,4 @@ export type { DecodedRevert } from './error-decoder.js';
 
 // ─── Deployments ─────────────────────────────────────────────
 export * as DisputeDeployments from './deployments.js';
-export { MAINNET, FACTORY_ADDRESS, DEFAULT_FACTORY_ADDRESS, getFactoryAddress, listDeployments } from './deployments.js';
+export { FACTORY_ADDRESS, SUPPORTED_CHAIN_IDS, isSupportedChainId, requireSupportedChainId, getFactoryAddress, listDeployments } from './deployments.js';
