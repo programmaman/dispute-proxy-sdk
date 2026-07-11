@@ -34,14 +34,17 @@
     "node": ">=20"
   },
   "scripts": {
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "eslint src scripts",
+    "lint:fix": "eslint src scripts --fix",
     "typechain": "typechain --target ethers-v6 --out-dir generated/typechain '../../../frontend/abi/Dispute*.json'",
     "posttypechain": "node scripts/patch-typechain.mjs",
     "build": "tsc",
+    "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true}); fs.rmSync('dist-test',{recursive:true,force:true})\"",
     "regenerate": "npm run typechain && node scripts/patch-typechain.mjs",
     "prepack": "npm run build",
-    "test": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js && node --import tsx/esm --test --test-concurrency=1 test/e2e/*.e2e.test.ts"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js && node --import tsx/esm --test --test-concurrency=1 test/e2e/*.e2e.test.ts",
+    "pack:check": "npm pack --dry-run"
   },
   "dependencies": {
     "ethers": "^6.17.0"
@@ -61,6 +64,9 @@
   },
   "files": [
     "dist/src",
-    "dist/generated"
+    "dist/generated",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ]
 }
