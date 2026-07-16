@@ -1,11 +1,11 @@
 import type { AbstractProvider } from 'ethers';
 import type { PreparedTx } from './common/index.js';
 import type {
-    DisputeInfo,
     EnrichedEvidenceEvent,
     DisputeEvent,
 } from './types.js';
 import type { DisputesConfig } from './DisputeTxBuilder.js';
+import type { DisputeReadable } from './internal/DisputeReadable.js';
 import { DisputeReader } from './DisputeReader.js';
 import { DisputeTxBuilder } from './DisputeTxBuilder.js';
 import { DisputeEvents, TOPIC_EVIDENCE } from './DisputeEvents.js';
@@ -18,6 +18,8 @@ import { DisputeEvents, TOPIC_EVIDENCE } from './DisputeEvents.js';
  * Read methods are async (eth_call). Write methods return unsigned PreparedTx.
  */
 export class Dispute {
+    readonly read: DisputeReadable<[]>;
+
     constructor(
         /** On-chain address of this Dispute clone. */
         readonly address: string,
@@ -27,14 +29,33 @@ export class Dispute {
         private readonly decoder:  DisputeEvents,
         private readonly provider: AbstractProvider,
         private readonly walletAddress?: string,
-    ) {}
+    ) {
+        this.read = Object.assign(
+            () => this.reader.readDispute(this.address),
+            {
+                state: () => this.reader.readDispute.state(this.address),
+                owner: () => this.reader.readDispute.owner(this.address),
+                arbitrator: () => this.reader.readDispute.arbitrator(this.address),
+                arbitratorExtraData: () =>
+                    this.reader.readDispute.arbitratorExtraData(this.address),
+                providerDisputeId: () =>
+                    this.reader.readDispute.providerDisputeId(this.address),
+                numberOfRulingOptions: () =>
+                    this.reader.readDispute.numberOfRulingOptions(this.address),
+                ruling: () => this.reader.readDispute.ruling(this.address),
+                isRuled: () => this.reader.readDispute.isRuled(this.address),
+                evidenceSubmitted: () =>
+                    this.reader.readDispute.evidenceSubmitted(this.address),
+                arbitrationCost: () =>
+                    this.reader.readDispute.arbitrationCost(this.address),
+                appealCost: () => this.reader.readDispute.appealCost(this.address),
+                appealPeriod: () =>
+                    this.reader.readDispute.appealPeriod(this.address),
+            },
+        );
+    }
 
     // ─── Reads ────────────────────────────────────────────────────────────────
-
-    /** Reads all on-chain state for this dispute. */
-    read(): Promise<DisputeInfo> {
-        return this.reader.readDispute(this.address);
-    }
 
     /** Current Kleros arbitration cost in wei. */
     arbitrationCost(): Promise<bigint> {

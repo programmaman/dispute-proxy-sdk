@@ -6,18 +6,52 @@ import {
     type CostEstimate,
     type DisputeImplementationInfo,
     DisputeState,
+    type AppealPeriod,
 } from './types.js';
 import { type MulticallConfig, type EncodedReadCall, executeMulticall } from './multicall.js';
 import { DisputeFactory__factory, Dispute__factory } from '../generated/typechain/index.js';
+import type { DisputeReadable } from './internal/DisputeReadable.js';
 
 const FACTORY_IFACE = DisputeFactory__factory.createInterface() as unknown as Interface;
 const DISPUTE_IFACE = Dispute__factory.createInterface() as unknown as Interface;
 
 export class DisputeReader {
     private readonly _multicall?: MulticallConfig;
+    readonly readDispute: DisputeReadable<[disputeAddress: string]>;
 
-    constructor(private readonly provider: AbstractProvider, multicallConfig?: MulticallConfig) {
+    constructor(
+        private readonly provider: AbstractProvider,
+        multicallConfig?: MulticallConfig,
+    ) {
         this._multicall = multicallConfig;
+        this.readDispute = Object.assign(
+            (disputeAddress: string) => this._readDisputeSnapshot(disputeAddress),
+            {
+                state: (disputeAddress: string) => this._readDisputeState(disputeAddress),
+                owner: (disputeAddress: string) =>
+                    this._readDisputeString(disputeAddress, 'owner'),
+                arbitrator: (disputeAddress: string) =>
+                    this._readDisputeString(disputeAddress, 'arbitrator'),
+                arbitratorExtraData: (disputeAddress: string) =>
+                    this._readDisputeString(disputeAddress, 'arbitratorExtraData'),
+                providerDisputeId: (disputeAddress: string) =>
+                    this._readDisputeBigInt(disputeAddress, 'providerDisputeId'),
+                numberOfRulingOptions: (disputeAddress: string) =>
+                    this._readDisputeBigInt(disputeAddress, 'numberOfRulingOptions'),
+                ruling: (disputeAddress: string) =>
+                    this._readDisputeBigInt(disputeAddress, 'ruling'),
+                isRuled: (disputeAddress: string) =>
+                    this._readDisputeBoolean(disputeAddress, 'isRuled'),
+                evidenceSubmitted: (disputeAddress: string) =>
+                    this._readDisputeBoolean(disputeAddress, 'evidenceSubmitted'),
+                arbitrationCost: (disputeAddress: string) =>
+                    this.readArbitrationCost(disputeAddress),
+                appealCost: (disputeAddress: string) =>
+                    this.readAppealCost(disputeAddress),
+                appealPeriod: (disputeAddress: string) =>
+                    this.readAppealPeriod(disputeAddress),
+            },
+        );
     }
 
     // ─── Factory reads ────────────────────────────────────────────────────────
@@ -208,7 +242,7 @@ export class DisputeReader {
 
     // ─── Dispute reads ─────────────────────────────────────────────────────────
 
-    async readDispute(disputeAddress: string): Promise<DisputeInfo> {
+    private async _readDisputeSnapshot(disputeAddress: string): Promise<DisputeInfo> {
         const addr = requireAddress(disputeAddress, 'disputeAddress');
         return this._multicall
             ? this._readDisputeViaMulticall(addr)
@@ -304,10 +338,50 @@ export class DisputeReader {
         return DISPUTE_IFACE.decodeFunctionResult('appealCost', raw)[0] as bigint;
     }
 
-    async readAppealPeriod(disputeAddress: string): Promise<{ start: bigint; end: bigint }> {
+    async readAppealPeriod(disputeAddress: string): Promise<AppealPeriod> {
         const addr = requireAddress(disputeAddress, 'disputeAddress');
         const raw = await this.provider.call({ to: addr, data: DISPUTE_IFACE.encodeFunctionData('appealPeriod', []) });
         const result = DISPUTE_IFACE.decodeFunctionResult('appealPeriod', raw);
         return { start: result[0] as bigint, end: result[1] as bigint };
+    }
+
+    private async _readDisputeValue(
+        disputeAddress: string,
+        method: string,
+    ): Promise<unknown> {
+        const addr = requireAddress(disputeAddress, 'disputeAddress');
+        const raw = await this.provider.call({
+            to: addr,
+            data: DISPUTE_IFACE.encodeFunctionData(method, []),
+        });
+        return DISPUTE_IFACE.decodeFunctionResult(method, raw)[0];
+    }
+
+    private async _readDisputeString(
+        disputeAddress: string,
+        method: 'owner' | 'arbitrator' | 'arbitratorExtraData',
+    ): Promise<string> {
+        return await this._readDisputeValue(disputeAddress, method) as string;
+    }
+
+    private async _readDisputeBigInt(
+        disputeAddress: string,
+        method: 'providerDisputeId' | 'numberOfRulingOptions' | 'ruling',
+    ): Promise<bigint> {
+        return await this._readDisputeValue(disputeAddress, method) as bigint;
+    }
+
+    private async _readDisputeBoolean(
+        disputeAddress: string,
+        method: 'isRuled' | 'evidenceSubmitted',
+    ): Promise<boolean> {
+        return await this._readDisputeValue(disputeAddress, method) as boolean;
+    }
+
+    private async _readDisputeState(
+        disputeAddress: string,
+    ): Promise<DisputeState> {
+        const isRuled = await this._readDisputeBoolean(disputeAddress, 'isRuled');
+        return isRuled ? DisputeState.RULED : DisputeState.PENDING;
     }
 }

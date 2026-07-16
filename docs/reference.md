@@ -127,11 +127,43 @@ type PrepareCreateResult = {
 | Method | Returns |
 | --- | --- |
 | `dispute.read()` | `DisputeInfo` |
+| `dispute.read.state()` | `DisputeState` |
+| `dispute.read.owner()` | Owner address |
+| `dispute.read.arbitrator()` | Arbitrator address |
+| `dispute.read.arbitratorExtraData()` | Arbitrator extra data |
+| `dispute.read.providerDisputeId()` | Provider dispute ID |
+| `dispute.read.numberOfRulingOptions()` | Number of ruling options |
+| `dispute.read.ruling()` | Current ruling |
+| `dispute.read.isRuled()` | `boolean` |
+| `dispute.read.evidenceSubmitted()` | `boolean` |
+| `dispute.read.arbitrationCost()` | Current Kleros arbitration fee |
+| `dispute.read.appealCost()` | Current appeal fee |
+| `dispute.read.appealPeriod()` | `AppealPeriod` |
 | `dispute.arbitrationCost()` | Current Kleros arbitration fee |
 | `dispute.appealCost()` | Current appeal fee |
-| `dispute.appealPeriod()` | `{ start, end }` |
+| `dispute.appealPeriod()` | `AppealPeriod` |
 | `dispute.getLogs(from?, to?)` | Decoded dispute clone events |
 | `dispute.getEvidenceTimeline(from?, to?)` | Evidence events with block timestamps |
+
+## Direct Reader
+
+`DisputeReader` exposes the same read surface with a dispute address argument:
+
+| Method | Returns |
+| --- | --- |
+| `reader.readDispute(address)` | `DisputeInfo` |
+| `reader.readDispute.state(address)` | `DisputeState` |
+| `reader.readDispute.owner(address)` | Owner address |
+| `reader.readDispute.arbitrator(address)` | Arbitrator address |
+| `reader.readDispute.arbitratorExtraData(address)` | Arbitrator extra data |
+| `reader.readDispute.providerDisputeId(address)` | Provider dispute ID |
+| `reader.readDispute.numberOfRulingOptions(address)` | Number of ruling options |
+| `reader.readDispute.ruling(address)` | Current ruling |
+| `reader.readDispute.isRuled(address)` | `boolean` |
+| `reader.readDispute.evidenceSubmitted(address)` | `boolean` |
+| `reader.readDispute.arbitrationCost(address)` | Current Kleros arbitration fee |
+| `reader.readDispute.appealCost(address)` | Current appeal fee |
+| `reader.readDispute.appealPeriod(address)` | `AppealPeriod` |
 
 ## Dispute Writes
 
@@ -156,6 +188,11 @@ interface DisputeInfo {
   ruling: bigint;
   isRuled: boolean;
   evidenceSubmitted: boolean;
+}
+
+interface AppealPeriod {
+  start: bigint;
+  end: bigint;
 }
 ```
 

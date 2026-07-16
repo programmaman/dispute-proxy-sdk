@@ -24,6 +24,7 @@ export { DisputeEvents, DisputeTopics, TOPIC_DISPUTE_CREATED, TOPIC_CROWDFUNDABL
 export { DisputeState, DisputeType } from './types.js';
 export type {
     FactoryInfo,
+    AppealPeriod,
     DisputeInfo,
     CostEstimate,
     RulingResult,

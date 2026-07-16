@@ -12,6 +12,12 @@ export enum DisputeType {
     CROWDFUNDABLE = 1,
 }
 
+/** Appeal window for a dispute. `end == 0n` means no ruling has been issued yet. */
+export interface AppealPeriod {
+    start: bigint;
+    end: bigint;
+}
+
 // ─── Reader result types ───────────────────────────────────────────────────────
 
 /** Snapshot of DisputeFactory on-chain config. */
