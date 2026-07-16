@@ -4,6 +4,8 @@ All notable public changes to `@rakelabs/disputes-sdk` are documented here.
 
 ## Unreleased
 
+## 0.1.4
+
 ### Added
 
 - Added convenient individual read methods for dispute status, rulings, evidence, and appeals.
