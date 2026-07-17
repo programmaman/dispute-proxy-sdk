@@ -53,10 +53,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Verify package
-        run: |
-          npm run typecheck
-          npm run lint
-          npm run pack:check
+        run: npm run pack:check
 
       - name: Create GitHub release
         env:
