@@ -1,48 +1,66 @@
-import { Contract, type AbstractProvider } from 'ethers';
-
-const MULTICALL3_ABI = [
-    'function aggregate3(tuple(address target, bool allowFailure, bytes callData)[] calls) ' +
-    'view returns (tuple(bool success, bytes returnData)[] returnData)',
-] as const;
+import type { AbiCodec, DecodedError, Hex } from './common/AbiCodec.js';
+import type { RpcClient } from './common/index.js';
+import { ethCall, type RpcBlockIdentifier } from './internal/rpc.js';
 
 export interface MulticallConfig {
     address: string;
-    requireSuccess?: boolean;
 }
 
 export interface EncodedReadCall<T = unknown> {
     target: string;
     method: string;
-    callData: string;
-    decode: (returnData: string) => T;
+    callData: Hex;
+    decode: (returnData: Hex) => T;
+}
+
+interface MulticallResult {
+    readonly success: boolean;
+    readonly returnData: Hex;
+}
+
+export class MulticallCallError extends Error {
+    constructor(
+        readonly index: number,
+        readonly method: string,
+        readonly target: string,
+        readonly returnData: Hex,
+        readonly decodedError?: DecodedError,
+    ) {
+        super(`Multicall3 call failed — method="${method}" target=${target}`);
+        this.name = 'MulticallCallError';
+    }
 }
 
 export async function executeMulticall<T>(
-    provider: AbstractProvider,
+    rpcClient: RpcClient,
+    codec: AbiCodec,
     multicallAddress: string,
-    calls: EncodedReadCall<T>[],
-    requireSuccess = true,
+    calls: readonly EncodedReadCall<T>[],
+    readBlock: RpcBlockIdentifier = 'latest',
 ): Promise<T[]> {
     if (calls.length === 0) return [];
 
-    const contract = new Contract(multicallAddress, MULTICALL3_ABI, provider);
-
-    const batch = calls.map(c => ({
-        target:        c.target,
-        allowFailure:  true,
-        callData:      c.callData,
+    const batch = calls.map(call => ({
+        target: call.target,
+        allowFailure: true,
+        callData: call.callData,
     }));
+    const data = codec.encode('aggregate3((address,bool,bytes)[])', [batch]);
+    const raw = await ethCall(rpcClient, { to: multicallAddress, data }, readBlock);
+    const [decoded] = codec.decode('aggregate3((address,bool,bytes)[])', raw);
+    const results = decoded as readonly MulticallResult[];
 
-    const rawResults: Array<{ success: boolean; returnData: string }> =
-        await (contract.aggregate3)(batch);
-
-    return rawResults.map((r, i) => {
-        const c = calls[i];
-        if (!r.success && requireSuccess) {
-            throw new Error(
-                `Multicall3 call failed — method="${c.method}" target=${c.target}`,
+    return results.map((result, index) => {
+        const call = calls[index];
+        if (!result.success) {
+            throw new MulticallCallError(
+                index,
+                call.method,
+                call.target,
+                result.returnData,
+                codec.decodeError(result.returnData),
             );
         }
-        return c.decode(r.returnData);
+        return call.decode(result.returnData);
     });
 }

@@ -17,8 +17,8 @@ npm install @rakelabs/disputes-sdk ethers
 Requirements:
 
 - Node.js 20+
-- ethers v6
-- an EIP-1193 wallet provider, JSON-RPC provider, or compatible ethers provider
+- an RPC client and ABI codec supplied by your wallet/RPC integration
+- `ethers` is only needed for the ethers adapter shown below; viem integrations can be used instead
 
 ## What You Build With It
 
@@ -37,7 +37,8 @@ If your product is specifically escrow or payment oriented, start with `@rakelab
 
 ```ts
 import { BrowserProvider } from 'ethers';
-import { Disputes, extraData } from '@rakelabs/disputes-sdk';
+import { Disputes, ABI, extraData } from '@rakelabs/disputes-sdk';
+import { createEthersRpcClient, createEthersAbiCodec } from './your-ethers-integration.js';
 
 const provider = new BrowserProvider(window.ethereum);
 await provider.send('eth_requestAccounts', []);
@@ -45,7 +46,9 @@ await provider.send('eth_requestAccounts', []);
 const signer = await provider.getSigner();
 const walletAddress = await signer.getAddress();
 
-const disputes = await Disputes.fromProvider(provider, walletAddress);
+const rpc = createEthersRpcClient(provider);
+const codec = createEthersAbiCodec(ABI);
+const disputes = await Disputes.fromRpc(rpc, { codec, walletAddress });
 
 const arbitratorExtraData = extraData.generalCourt();
 const estimate = await disputes.factory.estimateCost(arbitratorExtraData);
@@ -162,10 +165,10 @@ console.log(generalCourt, decoded.subcourtId, decoded.minJurors);
 
 ## Errors
 
-Use `decodeDisputeError` to turn raw revert data into a readable contract error.
+The core SDK does not inspect wallet/provider exceptions. Your ethers or viem integration should extract revert data and pass it to its ABI codec.
 
 ```ts
-import { decodeDisputeError } from '@rakelabs/disputes-sdk';
+import { decodeEthersError } from './your-ethers-integration.js';
 
 try {
   await signer.sendTransaction({
@@ -174,9 +177,9 @@ try {
     value: BigInt(tx.value),
   });
 } catch (err) {
-  const decoded = decodeDisputeError(err);
-  if (decoded && 'error' in decoded) {
-    console.error(decoded.error, decoded.args);
+  const decoded = decodeEthersError(err);
+  if (decoded) {
+    console.error(decoded.name, decoded.args);
   }
 }
 ```
@@ -186,7 +189,6 @@ try {
 | Document | Use it for |
 | --- | --- |
 | [docs/reference.md](docs/reference.md) | API reference, types, actions, events, and common mistakes |
-| [docs/error-decoder.md](docs/error-decoder.md) | Revert decoding details |
 | [docs/advanced.md](docs/advanced.md) | Reader, transaction builder, multicall, and implementation selection |
 | [docs/on-chain.md](docs/on-chain.md) | Contract-level behavior and event model |
 

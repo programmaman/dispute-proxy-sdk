@@ -18,7 +18,8 @@ import {
   parseArbitratorExtraData,
   extraData,
   MainnetCourts,
-  decodeDisputeError,
+  ABI,
+  EVENT_TOPICS,
   IdGenerator,
 } from '@rakelabs/disputes-sdk';
 ```
@@ -56,8 +57,8 @@ const decoded = parseArbitratorExtraData(encoded);
 
 | Method | Purpose |
 | --- | --- |
-| `Disputes.fromProvider(provider, walletAddress?, multicall?)` | Detect chain and default factory from provider. |
-| `Disputes.forChain(chainId, provider, walletAddress?, impl?)` | Use the canonical factory address for a specific chain ID. |
+| `Disputes.fromRpc(rpc, { codec, ...options })` | Detect chain and default factory from an injected RPC client. |
+| `Disputes.forChain(chainId, rpc, codec, walletAddress?, impl?)` | Use the canonical factory address for a specific chain ID. |
 | `new Disputes(config)` | Use explicit factory, chain, multicall, and implementation config. |
 | `disputes.dispute(address)` | Return a bound dispute handle. No network call. |
 
@@ -66,11 +67,33 @@ const decoded = parseArbitratorExtraData(encoded);
 ```ts
 interface DisputeSdkConfig {
   chainId: number;
-  factoryAddress: string;
-  provider: AbstractProvider;
+  factoryAddress?: string;
+  rpcClient: RpcClient;
+  codec: AbiCodec;
+  readBlock?: ReadBlockReference;
   walletAddress?: string;
   multicall?: { address: string };
   impl?: { address: string; name: string };
+}
+
+interface DisputesFromRpcOptions {
+  codec: AbiCodec;
+  factoryAddress?: string;
+  walletAddress?: string;
+  readBlock?: ReadBlockReference;
+  multicall?: { address: string };
+  implNameOrAddress?: string;
+}
+
+interface RpcClient {
+  request(request: PreparedRpc): Promise<unknown>;
+}
+
+interface AbiCodec {
+  encode(signature: string, args?: readonly unknown[]): Hex;
+  decode(signature: string, data: Hex): readonly unknown[];
+  decodeEvent(signature: string, topics: readonly Hex[], data: Hex): Readonly<Record<string, unknown>>;
+  decodeError(data: Hex): DecodedError | undefined;
 }
 ```
 
@@ -272,7 +295,7 @@ type DisputeEvidenceEvent = {
 
 | Mistake | Fix |
 | --- | --- |
-| Passing `tx.value` directly to ethers v6. | Use `BigInt(tx.value)`. |
+| Treating a provider or wallet library as a core SDK dependency. | Create `RpcClient` and `AbiCodec` in the integration layer and inject them. |
 | Treating `disputeId` as the contract address. | Store `instance` from the factory creation event. |
 | Building `arbitratorExtraData` manually. | Use `buildArbitratorExtraData()` or `extraData`. |
 | Assuming evidence submission is owner-only. | Anyone can submit evidence while the contract allows it. |
