@@ -11,7 +11,10 @@ Your app -> Disputes SDK -> unsigned transaction -> user wallet -> blockchain
 ## Install
 
 ```bash
-npm install @rakelabs/disputes-sdk ethers
+# Choose one integration. The SDK core has no Ethers or Viem dependency.
+npm install @rakelabs/disputes-sdk @rakelabs/ethers-adapter ethers
+# or
+npm install @rakelabs/disputes-sdk @rakelabs/viem-adapter viem
 ```
 
 Requirements:
@@ -38,7 +41,10 @@ If your product is specifically escrow or payment oriented, start with `@rakelab
 ```ts
 import { BrowserProvider } from 'ethers';
 import { Disputes, ABI, extraData } from '@rakelabs/disputes-sdk';
-import { createEthersRpcClient, createEthersAbiCodec } from './your-ethers-integration.js';
+import {
+  createEthersRpcClient,
+  createEthersAbiCodec,
+} from '@rakelabs/ethers-adapter';
 
 const provider = new BrowserProvider(window.ethereum);
 await provider.send('eth_requestAccounts', []);
@@ -168,7 +174,7 @@ console.log(generalCourt, decoded.subcourtId, decoded.minJurors);
 The core SDK does not inspect wallet/provider exceptions. Your ethers or viem integration should extract revert data and pass it to its ABI codec.
 
 ```ts
-import { decodeEthersError } from './your-ethers-integration.js';
+import { decodeEthersError } from '@rakelabs/ethers-adapter';
 
 try {
   await signer.sendTransaction({
@@ -177,7 +183,7 @@ try {
     value: BigInt(tx.value),
   });
 } catch (err) {
-  const decoded = decodeEthersError(err);
+  const decoded = decodeEthersError(err, codec);
   if (decoded) {
     console.error(decoded.name, decoded.args);
   }
@@ -186,10 +192,14 @@ try {
 
 ## Documentation
 
+This README and the linked guides describe the unreleased `0.2.0` API until
+that version is tagged. For `0.1.x` usage, open the matching Git release tag.
+
 | Document | Use it for |
 | --- | --- |
 | [docs/reference.md](docs/reference.md) | API reference, types, actions, events, and common mistakes |
 | [docs/advanced.md](docs/advanced.md) | Reader, transaction builder, multicall, and implementation selection |
+| [docs/migration-0.1-to-0.2.md](docs/migration-0.1-to-0.2.md) | Migrate from provider-based initialization |
 | [docs/on-chain.md](docs/on-chain.md) | Contract-level behavior and event model |
 
 ## Safety Notes

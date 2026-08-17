@@ -2,6 +2,24 @@
 
 This guide covers direct builders, readers, implementation pinning, multicall, event indexing, crowdfundable disputes, and wallet-library adapters.
 
+## Adapter setup
+
+The examples below assume an application-owned Ethers provider and signer:
+
+```ts
+import { BrowserProvider } from 'ethers';
+import { ABI } from '@rakelabs/disputes-sdk';
+import { createEthersAbiCodec, createEthersRpcClient } from '@rakelabs/ethers-adapter';
+
+const provider = new BrowserProvider(window.ethereum);
+const signer = await provider.getSigner();
+const walletAddress = await signer.getAddress();
+const rpcClient = createEthersRpcClient(provider);
+const codec = createEthersAbiCodec(ABI);
+```
+
+Replace these two adapter calls with `@rakelabs/viem-adapter` when using Viem.
+
 ## Choose the Right Layer
 
 | Layer | Use when |
@@ -14,9 +32,7 @@ This guide covers direct builders, readers, implementation pinning, multicall, e
 Most apps should use:
 
 ```ts
-const rpc = createEthersRpcClient(provider);
-const codec = createEthersAbiCodec(ABI);
-const disputes = await Disputes.fromRpc(rpc, { codec, walletAddress });
+const disputes = await Disputes.fromRpc(rpcClient, { codec, walletAddress });
 const { tx } = await disputes.factory.prepareCreateDispute(params);
 const dispute = disputes.dispute('0xDISPUTE_ADDRESS');
 ```
@@ -143,14 +159,9 @@ Builder methods:
 ## Direct Reader
 
 ```ts
-import { JsonRpcProvider } from 'ethers';
 import { DisputeReader } from '@rakelabs/disputes-sdk';
 
-const provider = new JsonRpcProvider(process.env.RPC_URL);
-const reader = new DisputeReader(
-  createEthersRpcClient(provider),
-  createEthersAbiCodec(ABI),
-);
+const reader = new DisputeReader(rpcClient, codec);
 
 const factory = await reader.readFactory('0xFACTORY_ADDRESS');
 const dispute = await reader.readDispute('0xDISPUTE_ADDRESS');
@@ -176,14 +187,11 @@ For custom indexers:
 import { DisputeEvents, DisputeTopics } from '@rakelabs/disputes-sdk';
 
 const events = new DisputeEvents(createEthersAbiCodec(ABI));
-const rawLogs = await createEthersRpcClient(provider).request({
-  method: 'eth_getLogs',
-  params: [{
+const rawLogs = await rpcClient.getLogs({
   address: factoryAddress,
   topics: [DisputeTopics.DISPUTE_CREATED],
   fromBlock: 0,
   toBlock: 'latest',
-  }],
 });
 
 for (const log of rawLogs) {
