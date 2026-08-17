@@ -17,7 +17,6 @@ import type { MulticallConfig } from './multicall.js';
 import { getFactoryAddress, requireSupportedChainId } from './deployments.js';
 import type { ReadBlockReference, RpcClient } from './common/index.js';
 import type { AbiCodec } from './common/AbiCodec.js';
-import { decodeRpcChainId, ethGetLogs } from './internal/rpc.js';
 
 export interface DisputeSdkConfig {
     chainId: number;
@@ -193,7 +192,7 @@ export class FactoryHandle {
         fromBlock: number | 'earliest' = 0,
         toBlock:   number | 'latest'   = 'latest',
     ): Promise<DisputeCreatedEvent[]> {
-        const rawLogs = await ethGetLogs(this.rpcClient, {
+        const rawLogs = await this.rpcClient.getLogs({
             address:   this.cfg.factoryAddress,
             topics:    [TOPIC_DISPUTE_CREATED],
             fromBlock,
@@ -211,7 +210,7 @@ export class FactoryHandle {
         fromBlock: number | 'earliest' = 0,
         toBlock:   number | 'latest'   = 'latest',
     ): Promise<CrowdfundableDisputeDeployedEvent[]> {
-        const rawLogs = await ethGetLogs(this.rpcClient, {
+        const rawLogs = await this.rpcClient.getLogs({
             address:   this.cfg.factoryAddress,
             topics:    [TOPIC_CROWDFUNDABLE_DISPUTE_DEPLOYED],
             fromBlock,
@@ -238,13 +237,13 @@ export class FactoryHandle {
         const ownerTopic = '0x000000000000000000000000' + requireAddress(owner, 'owner').toLowerCase().slice(2);
 
         const [standardRaw, crowdfundableRaw] = await Promise.all([
-            ethGetLogs(this.rpcClient, {
+            this.rpcClient.getLogs({
                 address:   this.cfg.factoryAddress,
                 topics:    [TOPIC_DISPUTE_CREATED, null, null, ownerTopic],
                 fromBlock,
                 toBlock,
             }),
-            ethGetLogs(this.rpcClient, {
+            this.rpcClient.getLogs({
                 address:   this.cfg.factoryAddress,
                 topics:    [TOPIC_CROWDFUNDABLE_DISPUTE_DEPLOYED, null, null, ownerTopic],
                 fromBlock,
@@ -336,9 +335,7 @@ export class Disputes {
         rpcClient: RpcClient,
         options: DisputesFromRpcOptions,
     ): Promise<Disputes> {
-        const chainId = decodeRpcChainId(
-            await rpcClient.request({ method: 'eth_chainId', params: [] }),
-        );
+        const chainId = await rpcClient.getChainId();
         const factoryAddress = options.factoryAddress ?? getFactoryAddress(chainId);
         if (!factoryAddress) throw new Error(`Unsupported chain ID: ${chainId}`);
 

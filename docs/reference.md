@@ -86,7 +86,10 @@ interface DisputesFromRpcOptions {
 }
 
 interface RpcClient {
-  request(request: PreparedRpc): Promise<unknown>;
+  call(request: CallRequest): Promise<Hex>;
+  getLogs(filter: LogFilter): Promise<readonly EvmLog[]>;
+  getChainId(): Promise<number>;
+  getBlock(reference: ReadBlockReference): Promise<BlockInfo>;
 }
 
 interface AbiCodec {

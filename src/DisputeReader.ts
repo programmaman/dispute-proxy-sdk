@@ -1,7 +1,6 @@
 import { requireAddress, ZERO_ADDRESS } from './common/index.js';
 import type { AbiCodec, Hex } from './common/AbiCodec.js';
 import type { ReadBlockReference, RpcClient } from './common/index.js';
-import { encodeRpcBlockReference, ethCall, type RpcBlockIdentifier } from './internal/rpc.js';
 import {
     type FactoryInfo,
     type DisputeInfo,
@@ -17,7 +16,7 @@ export class DisputeReader {
     private readonly _multicall?: MulticallConfig;
     private readonly _rpcClient: RpcClient;
     private readonly _codec: AbiCodec;
-    private readonly _readBlock: RpcBlockIdentifier;
+    private readonly _readBlock: ReadBlockReference;
     readonly readDispute: DisputeReadable<[disputeAddress: string]>;
 
     constructor(
@@ -29,7 +28,7 @@ export class DisputeReader {
         this._rpcClient = rpcClient;
         this._codec = codec;
         this._multicall = multicallConfig;
-        this._readBlock = encodeRpcBlockReference(readBlock);
+        this._readBlock = readBlock;
         this.readDispute = Object.assign(
             (disputeAddress: string) => this._readDisputeSnapshot(disputeAddress),
             {
@@ -282,6 +281,6 @@ export class DisputeReader {
     }
 
     private _call(request: { to: string; data: Hex; from?: string }): Promise<Hex> {
-        return ethCall(this._rpcClient, request, this._readBlock);
+        return this._rpcClient.call({ ...request, block: this._readBlock });
     }
 }

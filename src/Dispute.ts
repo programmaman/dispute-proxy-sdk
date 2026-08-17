@@ -9,7 +9,6 @@ import { DisputeReader } from './DisputeReader.js';
 import { DisputeTxBuilder } from './DisputeTxBuilder.js';
 import { DisputeEvents, TOPIC_EVIDENCE } from './DisputeEvents.js';
 import type { RpcClient } from './common/index.js';
-import { ethGetBlockByNumber, ethGetLogs } from './internal/rpc.js';
 
 /**
  * A handle bound to a specific deployed Dispute clone.
@@ -120,7 +119,7 @@ export class Dispute {
         fromBlock: number | 'earliest' = 0,
         toBlock:   number | 'latest'   = 'latest',
     ): Promise<DisputeEvent[]> {
-        const rawLogs = await ethGetLogs(this.rpcClient, {
+        const rawLogs = await this.rpcClient.getLogs({
             address:  this.address,
             fromBlock,
             toBlock,
@@ -145,7 +144,7 @@ export class Dispute {
         fromBlock: number | 'earliest' = 0,
         toBlock:   number | 'latest'   = 'latest',
     ): Promise<EnrichedEvidenceEvent[]> {
-        const rawLogs = await ethGetLogs(this.rpcClient, {
+        const rawLogs = await this.rpcClient.getLogs({
             address:  this.address,
             topics:   [TOPIC_EVIDENCE],
             fromBlock,
@@ -158,7 +157,7 @@ export class Dispute {
             return l.blockNumber;
         }))];
         const blocks = await Promise.all(
-            blockNumbers.map(bn => ethGetBlockByNumber(this.rpcClient, bn)),
+            blockNumbers.map(bn => this.rpcClient.getBlock(bn)),
         );
         const blockMap = new Map<number, number>();
         for (const block of blocks) {
