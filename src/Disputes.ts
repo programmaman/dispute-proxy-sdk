@@ -1,4 +1,3 @@
-import type { AbstractProvider } from 'ethers';
 import type { PreparedTx } from './common/index.js';
 import type {
     FactoryInfo,
@@ -16,15 +15,28 @@ import { Dispute } from './Dispute.js';
 import { requireAddress, IdGenerator } from './common/index.js';
 import type { MulticallConfig } from './multicall.js';
 import { getFactoryAddress, requireSupportedChainId } from './deployments.js';
+import type { ReadBlockReference, RpcClient } from './common/index.js';
+import type { AbiCodec } from './common/AbiCodec.js';
 
 export interface DisputeSdkConfig {
     chainId: number;
     /** Defaults to the replayed DisputeFactory address. */
     factoryAddress?: string;
-    provider: AbstractProvider;
+    rpcClient: RpcClient;
+    codec: AbiCodec;
+    readBlock?: ReadBlockReference;
     walletAddress?: string;
     multicall?: MulticallConfig;
-    impl?: { address: string; name: string };
+    impl?: DisputeImplementationInfo;
+}
+
+export interface DisputesFromRpcOptions {
+    readonly codec: AbiCodec;
+    readonly factoryAddress?: string;
+    readonly walletAddress?: string;
+    readonly readBlock?: ReadBlockReference;
+    readonly multicall?: MulticallConfig;
+    readonly implNameOrAddress?: string;
 }
 
 // ─── FactoryHandle ─────────────────────────────────────────────────────────────
@@ -35,7 +47,7 @@ export class FactoryHandle {
         private readonly reader:       DisputeReader,
         private readonly builder:      DisputeTxBuilder,
         private readonly decoder:      DisputeEvents,
-        private readonly provider:     AbstractProvider,
+        private readonly rpcClient:    RpcClient,
         private readonly walletAddress?: string,
         private readonly impl?:        string,
     ) {}
@@ -180,7 +192,7 @@ export class FactoryHandle {
         fromBlock: number | 'earliest' = 0,
         toBlock:   number | 'latest'   = 'latest',
     ): Promise<DisputeCreatedEvent[]> {
-        const rawLogs = await this.provider.getLogs({
+        const rawLogs = await this.rpcClient.getLogs({
             address:   this.cfg.factoryAddress,
             topics:    [TOPIC_DISPUTE_CREATED],
             fromBlock,
@@ -198,7 +210,7 @@ export class FactoryHandle {
         fromBlock: number | 'earliest' = 0,
         toBlock:   number | 'latest'   = 'latest',
     ): Promise<CrowdfundableDisputeDeployedEvent[]> {
-        const rawLogs = await this.provider.getLogs({
+        const rawLogs = await this.rpcClient.getLogs({
             address:   this.cfg.factoryAddress,
             topics:    [TOPIC_CROWDFUNDABLE_DISPUTE_DEPLOYED],
             fromBlock,
@@ -225,13 +237,13 @@ export class FactoryHandle {
         const ownerTopic = '0x000000000000000000000000' + requireAddress(owner, 'owner').toLowerCase().slice(2);
 
         const [standardRaw, crowdfundableRaw] = await Promise.all([
-            this.provider.getLogs({
+            this.rpcClient.getLogs({
                 address:   this.cfg.factoryAddress,
                 topics:    [TOPIC_DISPUTE_CREATED, null, null, ownerTopic],
                 fromBlock,
                 toBlock,
             }),
-            this.provider.getLogs({
+            this.rpcClient.getLogs({
                 address:   this.cfg.factoryAddress,
                 topics:    [TOPIC_CROWDFUNDABLE_DISPUTE_DEPLOYED, null, null, ownerTopic],
                 fromBlock,
@@ -278,7 +290,7 @@ export class Disputes {
     private readonly _builder:  DisputeTxBuilder;
     private readonly _events:   DisputeEvents;
     private readonly _cfg:      DisputesConfig;
-    private readonly _provider: AbstractProvider;
+    private readonly _rpcClient: RpcClient;
     private readonly _wallet?:  string;
     private readonly _impl?:    string;
 
@@ -296,36 +308,51 @@ export class Disputes {
 
         requireAddress(factoryAddress, 'factoryAddress');
         this._cfg      = { chainId, factoryAddress };
-        this._provider = config.provider;
-        this._reader   = new DisputeReader(config.provider, config.multicall);
-        this._builder  = new DisputeTxBuilder();
-        this._events   = new DisputeEvents();
+        this._rpcClient = config.rpcClient;
+        this._reader   = new DisputeReader(config.rpcClient, config.codec, config.multicall, config.readBlock);
+        this._builder  = new DisputeTxBuilder(config.codec);
+        this._events   = new DisputeEvents(config.codec);
         this._wallet   = config.walletAddress;
         this._impl     = config.impl ? requireAddress(config.impl.address, 'impl') : undefined;
 
         this.factory = new FactoryHandle(
             this._cfg, this._reader, this._builder, this._events,
-            this._provider, this._wallet, this._impl,
+            this._rpcClient, this._wallet, this._impl,
         );
     }
 
     static forChain(
         chainId: number,
-        provider: AbstractProvider,
+        rpcClient: RpcClient,
+        codec: AbiCodec,
         walletAddress?: string,
         impl?: { address: string; name: string },
     ): Disputes {
-        return new Disputes({ chainId, provider, walletAddress, impl });
+        return new Disputes({ chainId, rpcClient, codec, walletAddress, impl });
     }
 
-    static async fromProvider(
-        provider: AbstractProvider,
-        walletAddress?: string,
-        multicall?: MulticallConfig,
+    static async fromRpc(
+        rpcClient: RpcClient,
+        options: DisputesFromRpcOptions,
     ): Promise<Disputes> {
-        const { chainId } = await provider.getNetwork();
-        const chainIdNumber = Disputes._normalizeChainId(Number(chainId));
-        return new Disputes({ chainId: chainIdNumber, provider, walletAddress, multicall });
+        const chainId = await rpcClient.getChainId();
+        const factoryAddress = options.factoryAddress ?? getFactoryAddress(chainId);
+        if (!factoryAddress) throw new Error(`Unsupported chain ID: ${chainId}`);
+
+        const reader = new DisputeReader(rpcClient, options.codec, options.multicall, options.readBlock);
+        const impl = options.implNameOrAddress
+            ? await Disputes._resolveImpl(reader, factoryAddress, options.implNameOrAddress)
+            : undefined;
+        return new Disputes({
+            chainId,
+            rpcClient,
+            codec: options.codec,
+            factoryAddress,
+            walletAddress: options.walletAddress,
+            readBlock: options.readBlock,
+            multicall: options.multicall,
+            impl,
+        });
     }
 
     private static _normalizeChainId(chainId: number): number {
@@ -338,7 +365,30 @@ export class Disputes {
     dispute(address: string): Dispute {
         return new Dispute(
             requireAddress(address, 'disputeAddress'),
-            this._cfg, this._reader, this._builder, this._events, this._provider, this._wallet,
+            this._cfg, this._reader, this._builder, this._events, this._rpcClient, this._wallet,
         );
+    }
+
+    private static async _resolveImpl(
+        reader: DisputeReader,
+        factoryAddress: string,
+        nameOrAddress: string,
+    ): Promise<DisputeImplementationInfo> {
+        if (nameOrAddress.startsWith('0x')) {
+            return { address: requireAddress(nameOrAddress, 'impl'), name: '' };
+        }
+        const [standard, crowdfundable] = await Promise.all([
+            reader.readDisputeImplCount(factoryAddress).then(count =>
+                Promise.all(Array.from({ length: count }, (_, i) => reader.readDisputeImplAt(factoryAddress, i)))),
+            reader.readCrowdfundableDisputeImplCount(factoryAddress).then(count =>
+                Promise.all(Array.from({ length: count }, (_, i) => reader.readCrowdfundableImplAt(factoryAddress, i)))),
+        ]);
+        const match = [...standard, ...crowdfundable].find(i =>
+            i.name.toLowerCase() === nameOrAddress.toLowerCase());
+        if (!match) throw new Error(
+            `No dispute implementation named "${nameOrAddress}" on factory ${factoryAddress}. ` +
+            `Available: ${[...standard, ...crowdfundable].map(i => i.name).join(', ')}.`,
+        );
+        return match;
     }
 }

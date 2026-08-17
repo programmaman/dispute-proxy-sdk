@@ -3,6 +3,7 @@ export interface EvmLog {
     topics: readonly string[];
     data: string;
     transactionHash?: string;
+    blockNumber?: number;
 }
 
 export function matchesTopic(log: EvmLog, topic0: string): boolean {

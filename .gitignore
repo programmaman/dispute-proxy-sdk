@@ -10,3 +10,10 @@ tsconfig.test.json
 package.local.json
 /todo.md
 /future-work.md
+/abi/
+/scripts/generate-abi.mjs
+/scripts/ensure-test-adapters.mjs
+/scripts/run-native-e2e-matrix.mjs
+/node
+/npm
+/tsconfig.check.json

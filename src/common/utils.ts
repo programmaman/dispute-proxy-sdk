@@ -1,4 +1,4 @@
-import { getAddress } from 'ethers';
+import { checksumAddress } from './address.js';
 
 export function requireAddress(addr: string | null | undefined, name: string): string {
     if (!addr || addr.trim() === '') {
@@ -8,7 +8,12 @@ export function requireAddress(addr: string | null | undefined, name: string): s
     if (stripped.length !== 40 || !/^[0-9a-fA-F]{40}$/.test(stripped)) {
         throw new Error(`${name} is not a valid 20-byte Ethereum address: ${addr}`);
     }
-    return getAddress(addr);
+    const checksummed = checksumAddress(addr);
+    const mixedCase = /[a-f]/.test(stripped) && /[A-F]/.test(stripped);
+    if (mixedCase && `0x${stripped}` !== checksummed) {
+        throw new Error(`${name} has an invalid EIP-55 checksum: ${addr}`);
+    }
+    return checksummed;
 }
 
 export function uuidToBytes32Hex(uuid: string): string {

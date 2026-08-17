@@ -14,7 +14,9 @@ This guide covers direct builders, readers, implementation pinning, multicall, e
 Most apps should use:
 
 ```ts
-const disputes = await Disputes.fromProvider(provider, walletAddress);
+const rpc = createEthersRpcClient(provider);
+const codec = createEthersAbiCodec(ABI);
+const disputes = await Disputes.fromRpc(rpc, { codec, walletAddress });
 const { tx } = await disputes.factory.prepareCreateDispute(params);
 const dispute = disputes.dispute('0xDISPUTE_ADDRESS');
 ```
@@ -25,7 +27,8 @@ const dispute = disputes.dispute('0xDISPUTE_ADDRESS');
 const disputes = new Disputes({
   chainId: 11155111,
   factoryAddress: '0xFACTORY_ADDRESS',
-  provider,
+  rpcClient: createEthersRpcClient(provider),
+  codec: createEthersAbiCodec(ABI),
   walletAddress,
   multicall: {
     address: '0xcA11bde05977b3631167028862bE2a173976CA11',
@@ -75,7 +78,8 @@ Pin a standard implementation in explicit config:
 const pinned = new Disputes({
   chainId: 11155111,
   factoryAddress: '0xFACTORY_ADDRESS',
-  provider,
+  rpcClient: createEthersRpcClient(provider),
+  codec: createEthersAbiCodec(ABI),
   walletAddress,
   impl: standard[0],
 });
@@ -88,8 +92,10 @@ Pinning affects create and predict calls. Existing dispute handles are bound to 
 Add Multicall3 to batch `readDispute()` and `readFactory()` internals.
 
 ```ts
-const disputes = await Disputes.fromProvider(provider, walletAddress, {
-  address: '0xcA11bde05977b3631167028862bE2a173976CA11',
+const disputes = await Disputes.fromRpc(createEthersRpcClient(provider), {
+  codec: createEthersAbiCodec(ABI),
+  walletAddress,
+  multicall: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' },
 });
 
 const info = await disputes.dispute('0xDISPUTE_ADDRESS').read();
@@ -109,7 +115,7 @@ import {
   buildArbitratorExtraData,
 } from '@rakelabs/disputes-sdk';
 
-const builder = new DisputeTxBuilder();
+const builder = new DisputeTxBuilder(createEthersAbiCodec(ABI));
 const cfg = { chainId: 11155111, factoryAddress: '0xFACTORY_ADDRESS' };
 
 const tx = builder.createDispute(cfg, {
@@ -140,7 +146,11 @@ Builder methods:
 import { JsonRpcProvider } from 'ethers';
 import { DisputeReader } from '@rakelabs/disputes-sdk';
 
-const reader = new DisputeReader(new JsonRpcProvider(process.env.RPC_URL));
+const provider = new JsonRpcProvider(process.env.RPC_URL);
+const reader = new DisputeReader(
+  createEthersRpcClient(provider),
+  createEthersAbiCodec(ABI),
+);
 
 const factory = await reader.readFactory('0xFACTORY_ADDRESS');
 const dispute = await reader.readDispute('0xDISPUTE_ADDRESS');
@@ -165,12 +175,15 @@ For custom indexers:
 ```ts
 import { DisputeEvents, DisputeTopics } from '@rakelabs/disputes-sdk';
 
-const events = new DisputeEvents();
-const rawLogs = await provider.getLogs({
+const events = new DisputeEvents(createEthersAbiCodec(ABI));
+const rawLogs = await createEthersRpcClient(provider).request({
+  method: 'eth_getLogs',
+  params: [{
   address: factoryAddress,
   topics: [DisputeTopics.DISPUTE_CREATED],
   fromBlock: 0,
   toBlock: 'latest',
+  }],
 });
 
 for (const log of rawLogs) {

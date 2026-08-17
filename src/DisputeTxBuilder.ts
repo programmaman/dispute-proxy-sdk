@@ -1,7 +1,6 @@
-import { Interface } from 'ethers';
 import type { PreparedTx } from './common/index.js';
 import { requireAddress, type SigningPreview, buildFeeBreakdown, ZERO_ADDRESS } from './common/index.js';
-import { DisputeFactory__factory, Dispute__factory } from '../generated/typechain/index.js';
+import type { AbiCodec } from './common/AbiCodec.js';
 
 // ─── Configuration ─────────────────────────────────────────────────────────────
 
@@ -86,13 +85,7 @@ function withValue(
  * submits the transaction. This class never holds private keys.
  */
 export class DisputeTxBuilder {
-    private readonly factoryIface: Interface;
-    private readonly disputeIface: Interface;
-
-    constructor() {
-        this.factoryIface = DisputeFactory__factory.createInterface();
-        this.disputeIface = Dispute__factory.createInterface();
-    }
+    constructor(private readonly codec: AbiCodec) {}
 
     // ─── Factory: createDispute ─────────────────────────────────────────────
 
@@ -134,12 +127,8 @@ export class DisputeTxBuilder {
         const fnName = isCrowdfundable ? 'createCrowdfundableDispute' : 'createDispute';
 
         const data = p.impl
-            ? this.factoryIface.encodeFunctionData(
-                `${fnName}(address,(bytes32,bytes,uint256,string))`,
-                [p.impl, req])
-            : this.factoryIface.encodeFunctionData(
-                `${fnName}((bytes32,bytes,uint256,string))`,
-                [req]);
+            ? this.codec.encode(`${fnName}(address,(bytes32,bytes,uint256,string))`, [p.impl, req])
+            : this.codec.encode(`${fnName}((bytes32,bytes,uint256,string))`, [req]);
 
         const preview: SigningPreview = {
             action: isCrowdfundable ? 'Create Crowdfundable Dispute' : 'Create Dispute',
@@ -173,7 +162,7 @@ export class DisputeTxBuilder {
         requireAddress(p.callerWallet, 'callerWallet');
         requireAddress(p.disputeAddress, 'disputeAddress');
         if (!p.evidenceUri?.trim()) throw new Error('evidenceUri must not be blank');
-        const data = this.disputeIface.encodeFunctionData('submitEvidence', [p.evidenceUri]);
+        const data = this.codec.encode('submitEvidence(string)', [p.evidenceUri]);
         const preview: SigningPreview = {
             action: 'Submit Evidence',
             signer: 'owner',
@@ -189,7 +178,7 @@ export class DisputeTxBuilder {
         requireAddress(p.callerWallet, 'callerWallet');
         requireAddress(p.disputeAddress, 'disputeAddress');
         if (!p.newUri?.trim()) throw new Error('newUri must not be blank');
-        const data = this.disputeIface.encodeFunctionData('amendMetaEvidence', [p.newUri]);
+        const data = this.codec.encode('amendMetaEvidence(string)', [p.newUri]);
         const preview: SigningPreview = {
             action: 'Amend Meta Evidence',
             signer: 'owner',
@@ -205,7 +194,7 @@ export class DisputeTxBuilder {
         requireAddress(p.callerWallet, 'callerWallet');
         requireAddress(p.disputeAddress, 'disputeAddress');
         if (p.appealFeeWei < 0n) throw new Error('appealFeeWei must be >= 0');
-        const data = this.disputeIface.encodeFunctionData('appeal', [p.arbitratorExtraData ?? '0x']);
+        const data = this.codec.encode('appeal(bytes)', [p.arbitratorExtraData ?? '0x']);
         const preview: SigningPreview = {
             action: 'Appeal Ruling',
             signer: 'owner',
@@ -237,7 +226,7 @@ export class DisputeTxBuilder {
     ): PreparedTx {
         requireAddress(p.callerWallet, 'callerWallet');
         requireAddress(p.disputeAddress, 'disputeAddress');
-        const data = this.disputeIface.encodeFunctionData(method, []);
+        const data = this.codec.encode(`${method}()`);
         const preview: SigningPreview = {
             action,
             signer: 'owner',

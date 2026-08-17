@@ -1,4 +1,3 @@
-import type { AbstractProvider } from 'ethers';
 import type { PreparedTx } from './common/index.js';
 import type {
     EnrichedEvidenceEvent,
@@ -9,6 +8,7 @@ import type { DisputeReadable } from './internal/DisputeReadable.js';
 import { DisputeReader } from './DisputeReader.js';
 import { DisputeTxBuilder } from './DisputeTxBuilder.js';
 import { DisputeEvents, TOPIC_EVIDENCE } from './DisputeEvents.js';
+import type { RpcClient } from './common/index.js';
 
 /**
  * A handle bound to a specific deployed Dispute clone.
@@ -27,7 +27,7 @@ export class Dispute {
         private readonly reader:   DisputeReader,
         private readonly builder:  DisputeTxBuilder,
         private readonly decoder:  DisputeEvents,
-        private readonly provider: AbstractProvider,
+        private readonly rpcClient: RpcClient,
         private readonly walletAddress?: string,
     ) {
         this.read = Object.assign(
@@ -119,14 +119,14 @@ export class Dispute {
         fromBlock: number | 'earliest' = 0,
         toBlock:   number | 'latest'   = 'latest',
     ): Promise<DisputeEvent[]> {
-        const rawLogs = await this.provider.getLogs({
+        const rawLogs = await this.rpcClient.getLogs({
             address:  this.address,
             fromBlock,
             toBlock,
         });
 
         return rawLogs.flatMap(log => {
-            const evmLog = { address: log.address, topics: log.topics, data: log.data, transactionHash: log.transactionHash };
+            const evmLog = { address: log.address, topics: log.topics, data: log.data, transactionHash: log.transactionHash, blockNumber: log.blockNumber };
             const decoded = this.decoder.tryDecodeProviderDisputeCreated(evmLog)
                 ?? this.decoder.tryDecodeRulingIssued(evmLog)
                 ?? this.decoder.tryDecodeEvidence(evmLog);
@@ -144,7 +144,7 @@ export class Dispute {
         fromBlock: number | 'earliest' = 0,
         toBlock:   number | 'latest'   = 'latest',
     ): Promise<EnrichedEvidenceEvent[]> {
-        const rawLogs = await this.provider.getLogs({
+        const rawLogs = await this.rpcClient.getLogs({
             address:  this.address,
             topics:   [TOPIC_EVIDENCE],
             fromBlock,
@@ -152,17 +152,21 @@ export class Dispute {
         });
 
         // Fetch block metadata for each log to get timestamps
-        const blockNumbers = [...new Set(rawLogs.map(l => l.blockNumber))];
+        const blockNumbers = [...new Set(rawLogs.map(l => {
+            if (l.blockNumber === undefined) throw new Error('eth_getLogs evidence result is missing blockNumber');
+            return l.blockNumber;
+        }))];
         const blocks = await Promise.all(
-            blockNumbers.map(bn => this.provider.getBlock(bn)),
+            blockNumbers.map(bn => this.rpcClient.getBlock(bn)),
         );
         const blockMap = new Map<number, number>();
         for (const block of blocks) {
-            if (block) blockMap.set(block.number, block.timestamp);
+            blockMap.set(block.number, block.timestamp);
         }
 
         return rawLogs.flatMap(log => {
-            const evmLog = { address: log.address, topics: log.topics, data: log.data, transactionHash: log.transactionHash };
+            if (log.blockNumber === undefined) throw new Error('eth_getLogs evidence result is missing blockNumber');
+            const evmLog = { address: log.address, topics: log.topics, data: log.data, transactionHash: log.transactionHash, blockNumber: log.blockNumber };
             const decoded = this.decoder.tryDecodeEvidence(evmLog);
             if (!decoded) return [];
             const ts = blockMap.get(log.blockNumber) ?? 0;
